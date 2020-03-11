@@ -16,6 +16,11 @@ fun main() {
 
     val appStates = AppStates()
     var scheduledPingJob: Job? = null
+    val statusPrinterJob = GlobalScope.launch {
+        delay(Duration.ofSeconds(15))
+        val threshold = LocalDateTime.now().minusMinutes(1)
+        logger.info(appStates.report(threshold))
+    }
 
     RapidApplication.create(env).apply {
         register(object : RapidsConnection.StatusListener {
@@ -25,6 +30,7 @@ fun main() {
 
             override fun onShutdown(rapidsConnection: RapidsConnection) {
                 scheduledPingJob?.cancel()
+                statusPrinterJob.cancel()
             }
         })
 
@@ -87,8 +93,7 @@ internal class AppStates {
         Instance.down(states.getOrPut(app) { mutableListOf() }, instance, time)
     }
 
-    override fun toString(): String {
-        val threshold = LocalDateTime.now().minusMinutes(1)
+    fun report(threshold: LocalDateTime): String {
         val sb = StringBuffer()
         sb.append("Application states since ${threshold.format(timestampFormat)}:\n")
         states.forEach { (app, instances) ->
