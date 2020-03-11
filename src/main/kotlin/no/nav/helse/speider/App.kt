@@ -1,5 +1,6 @@
 package no.nav.helse.speider
 
+import io.prometheus.client.Gauge
 import kotlinx.coroutines.*
 import kotlinx.coroutines.time.delay
 import no.nav.helse.rapids_rivers.*
@@ -9,6 +10,9 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit.SECONDS
 
+private val stateGauge = Gauge.build("app_status", "Gjeldende status på apps")
+    .labelNames("appnavn")
+    .register()
 private val logger = LoggerFactory.getLogger("no.nav.helse.speider.App")
 
 fun main() {
@@ -20,7 +24,10 @@ fun main() {
         while (isActive) {
             delay(Duration.ofSeconds(15))
             val threshold = LocalDateTime.now().minusMinutes(1)
-            logger.info(appStates.report(threshold))
+            logger.info(appStates.reportString(threshold))
+            appStates.report(threshold).forEach { (app, state) ->
+                stateGauge.labels(app).set(state.toDouble())
+            }
         }
     }
 
@@ -99,7 +106,11 @@ internal class AppStates {
         Instance.down(states.getOrPut(app) { mutableListOf() }, instance, time)
     }
 
-    fun report(threshold: LocalDateTime): String {
+    fun report(threshold: LocalDateTime): Map<String, Int> {
+        return states.mapValues { if (Instance.up(it.value, threshold)) 1 else 0 }
+    }
+
+    fun reportString(threshold: LocalDateTime): String {
         val sb = StringBuffer()
         sb.append("Application states since ${threshold.format(timestampFormat)}:\n")
         states.forEach { (app, instances) ->
