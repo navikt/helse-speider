@@ -17,9 +17,11 @@ fun main() {
     val appStates = AppStates()
     var scheduledPingJob: Job? = null
     val statusPrinterJob = GlobalScope.launch {
-        delay(Duration.ofSeconds(15))
-        val threshold = LocalDateTime.now().minusMinutes(1)
-        logger.info(appStates.report(threshold))
+        while (isActive) {
+            delay(Duration.ofSeconds(15))
+            val threshold = LocalDateTime.now().minusMinutes(1)
+            logger.info(appStates.report(threshold))
+        }
     }
 
     RapidApplication.create(env).apply {
