@@ -7,7 +7,7 @@ import org.slf4j.LoggerFactory
 import java.time.Duration
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
+import java.time.temporal.ChronoUnit.SECONDS
 
 private val logger = LoggerFactory.getLogger("no.nav.helse.speider.App")
 
@@ -45,12 +45,16 @@ fun main() {
 
         River(this).apply {
             validate { it.requireValue("@event_name", "pong") }
-            validate { it.requireKey("pong_time", "app_name", "instance_id") }
+            validate { it.requireKey("ping_time", "pong_time", "app_name", "instance_id") }
         }.register(object : River.PacketListener {
             override fun onPacket(packet: JsonMessage, context: RapidsConnection.MessageContext) {
-                logger.info("{}-{} svarte på ping etter {} sekunder", packet["app_name"].asText(), packet["instance_id"].asText(),
-                    ChronoUnit.SECONDS.between(packet["ping_time"].asLocalDateTime(), packet["pong_time"].asLocalDateTime()))
-                appStates.up(packet["app_name"].asText(), packet["instance_id"].asText(), packet["pong_time"].asLocalDateTime())
+                val app = packet["app_name"].asText()
+                val instance = packet["instance_id"].asText()
+                val pingTime = packet["ping_time"].asLocalDateTime()
+                val pongTime = packet["pong_time"].asLocalDateTime()
+
+                logger.info("{}-{} svarte på ping etter {} sekunder", app, instance, SECONDS.between(pingTime, pongTime))
+                appStates.up(app, instance, pongTime)
             }
         })
 
