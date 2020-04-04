@@ -1,5 +1,6 @@
 package no.nav.helse.speider
 
+import com.fasterxml.jackson.databind.JsonNode
 import io.prometheus.client.Gauge
 import kotlinx.coroutines.*
 import kotlinx.coroutines.time.delay
@@ -45,7 +46,8 @@ fun main() {
 
         River(this).apply {
             validate { it.requireValue("@event_name", "application_up") }
-            validate { it.requireKey("@opprettet", "app_name", "instance_id") }
+            validate { it.requireKey("app_name", "instance_id") }
+            validate { it.require("@opprettet", JsonNode::asLocalDateTime) }
         }.register(object : River.PacketListener {
             override fun onPacket(packet: JsonMessage, context: RapidsConnection.MessageContext) {
                 appStates.up(packet["app_name"].asText(), packet["instance_id"].asText(), packet["@opprettet"].asLocalDateTime())
@@ -54,7 +56,9 @@ fun main() {
 
         River(this).apply {
             validate { it.requireValue("@event_name", "pong") }
-            validate { it.requireKey("ping_time", "pong_time", "app_name", "instance_id") }
+            validate { it.requireKey("app_name", "instance_id") }
+            validate { it.require("ping_time", JsonNode::asLocalDateTime) }
+            validate { it.require("pong_time", JsonNode::asLocalDateTime) }
         }.register(object : River.PacketListener {
             override fun onPacket(packet: JsonMessage, context: RapidsConnection.MessageContext) {
                 val app = packet["app_name"].asText()
@@ -69,7 +73,8 @@ fun main() {
 
         River(this).apply {
             validate { it.requireValue("@event_name", "application_down") }
-            validate { it.requireKey("@opprettet", "app_name", "instance_id") }
+            validate { it.requireKey("app_name", "instance_id") }
+            validate { it.require("@opprettet", JsonNode::asLocalDateTime) }
         }.register(object : River.PacketListener {
             override fun onPacket(packet: JsonMessage, context: RapidsConnection.MessageContext) {
                 appStates.down(packet["app_name"].asText(), packet["instance_id"].asText(), packet["@opprettet"].asLocalDateTime())
@@ -79,8 +84,7 @@ fun main() {
 }
 
 private suspend fun CoroutineScope.pinger(rapidsConnection: RapidsConnection) {
-    val packet = JsonMessage("{}", MessageProblems("{}"))
-    packet["@event_name"] = "ping"
+    val packet = JsonMessage.newMessage(mapOf("@event_name" to "ping"))
     while (isActive) {
         delay(Duration.ofSeconds(30))
         packet["ping_time"] = LocalDateTime.now()
