@@ -84,11 +84,19 @@ private suspend fun CoroutineScope.printerJob(rapidsConnection: RapidsConnection
             report.forEach { (app, state) ->
                 stateGauge.labels(app).set(state.toDouble())
             }
+        }
+        appStates.instances(threshold).also { report ->
             rapidsConnection.publish(JsonMessage.newMessage(mapOf(
                 "@event_name" to "app_status",
                 "@opprettet" to LocalDateTime.now(),
-                "since" to threshold,
-                "states" to report
+                "threshold" to threshold,
+                "states" to report.map {
+                    mapOf<String, Any>(
+                        "app" to it.key,
+                        "state" to it.value.first,
+                        "last_active_time" to it.value.second
+                    )
+                }
             )).toJson())
         }
     }
@@ -122,7 +130,11 @@ internal class AppStates {
     }
 
     fun report(threshold: LocalDateTime): Map<String, Int> {
-        return states.mapValues { if (Instance.up(it.value, threshold)) 1 else 0 }
+        return instances(threshold).mapValues { it.value.first }
+    }
+
+    fun instances(threshold: LocalDateTime): Map<String, Pair<Int, LocalDateTime>> {
+        return states.mapValues { (if (Instance.up(it.value, threshold)) 1 else 0) to Instance.lastActiveTime(it.value) }
     }
 
     fun reportString(threshold: LocalDateTime): String {
@@ -156,6 +168,8 @@ internal class AppStates {
 
             fun up(list: MutableList<Instance>, threshold: LocalDateTime) =
                 list.any { it.time >= threshold }
+
+            fun lastActiveTime(list: MutableList<Instance>) = list.maxBy { it.time }?.time ?: LocalDateTime.MIN
         }
     }
 }
