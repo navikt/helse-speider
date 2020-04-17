@@ -87,6 +87,7 @@ private suspend fun CoroutineScope.printerJob(rapidsConnection: RapidsConnection
             rapidsConnection.publish(JsonMessage.newMessage(mapOf(
                 "@event_name" to "app_status",
                 "@opprettet" to LocalDateTime.now(),
+                "since" to threshold,
                 "states" to report
             )).toJson())
         }
