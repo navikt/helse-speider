@@ -21,26 +21,18 @@ fun main() {
 
     val appStates = AppStates()
     var scheduledPingJob: Job? = null
-    val statusPrinterJob = GlobalScope.launch {
-        while (isActive) {
-            delay(Duration.ofSeconds(15))
-            val threshold = LocalDateTime.now().minusMinutes(1)
-            logger.info(appStates.reportString(threshold))
-            appStates.report(threshold).forEach { (app, state) ->
-                stateGauge.labels(app).set(state.toDouble())
-            }
-        }
-    }
+    var statusPrinterJob: Job? = null
 
     RapidApplication.create(env).apply {
         register(object : RapidsConnection.StatusListener {
             override fun onStartup(rapidsConnection: RapidsConnection) {
+                statusPrinterJob = GlobalScope.launch { printerJob(rapidsConnection, appStates) }
                 scheduledPingJob = GlobalScope.launch { pinger(rapidsConnection) }
             }
 
             override fun onShutdown(rapidsConnection: RapidsConnection) {
                 scheduledPingJob?.cancel()
-                statusPrinterJob.cancel()
+                statusPrinterJob?.cancel()
             }
         })
 
@@ -81,6 +73,24 @@ fun main() {
             }
         })
     }.start()
+}
+
+private suspend fun CoroutineScope.printerJob(rapidsConnection: RapidsConnection, appStates: AppStates) {
+    while (isActive) {
+        delay(Duration.ofSeconds(15))
+        val threshold = LocalDateTime.now().minusMinutes(1)
+        logger.info(appStates.reportString(threshold))
+        appStates.report(threshold).also { report ->
+            report.forEach { (app, state) ->
+                stateGauge.labels(app).set(state.toDouble())
+            }
+            rapidsConnection.publish(JsonMessage.newMessage(mapOf(
+                "@event_name" to "app_status",
+                "@opprettet" to LocalDateTime.now(),
+                "states" to report
+            )).toJson())
+        }
+    }
 }
 
 private suspend fun CoroutineScope.pinger(rapidsConnection: RapidsConnection) {
