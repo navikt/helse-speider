@@ -37,17 +37,21 @@ fun main() {
         })
 
         River(this).apply {
-            validate { it.requireValue("@event_name", "application_up") }
+            validate { it.demandValue("@event_name", "application_up") }
             validate { it.requireKey("app_name", "instance_id") }
             validate { it.require("@opprettet", JsonNode::asLocalDateTime) }
         }.register(object : River.PacketListener {
             override fun onPacket(packet: JsonMessage, context: RapidsConnection.MessageContext) {
                 appStates.up(packet["app_name"].asText(), packet["instance_id"].asText(), packet["@opprettet"].asLocalDateTime())
             }
+
+            override fun onError(problems: MessageProblems, context: RapidsConnection.MessageContext) {
+                logger.error("forstod ikke application_up:\n${problems.toExtendedReport()}")
+            }
         })
 
         River(this).apply {
-            validate { it.requireValue("@event_name", "pong") }
+            validate { it.demandValue("@event_name", "pong") }
             validate { it.requireKey("app_name", "instance_id") }
             validate { it.require("ping_time", JsonNode::asLocalDateTime) }
             validate { it.require("pong_time", JsonNode::asLocalDateTime) }
@@ -61,15 +65,23 @@ fun main() {
                 logger.info("{}-{} svarte på ping etter {} sekunder", app, instance, SECONDS.between(pingTime, pongTime))
                 appStates.up(app, instance, pongTime)
             }
+
+            override fun onError(problems: MessageProblems, context: RapidsConnection.MessageContext) {
+                logger.error("forstod ikke pong:\n${problems.toExtendedReport()}")
+            }
         })
 
         River(this).apply {
-            validate { it.requireValue("@event_name", "application_down") }
+            validate { it.demandValue("@event_name", "application_down") }
             validate { it.requireKey("app_name", "instance_id") }
             validate { it.require("@opprettet", JsonNode::asLocalDateTime) }
         }.register(object : River.PacketListener {
             override fun onPacket(packet: JsonMessage, context: RapidsConnection.MessageContext) {
                 appStates.down(packet["app_name"].asText(), packet["instance_id"].asText(), packet["@opprettet"].asLocalDateTime())
+            }
+
+            override fun onError(problems: MessageProblems, context: RapidsConnection.MessageContext) {
+                logger.error("forstod ikke application_down:\n${problems.toExtendedReport()}")
             }
         })
     }.start()
@@ -116,17 +128,17 @@ internal class AppStates {
         private val timestampFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
     }
 
-    private val states = mutableMapOf<String, MutableList<Instance>>()
+    private val states = mutableListOf<App>()
 
-    fun up(app: String, threshold: LocalDateTime) = states[app]?.let { Instance.up(it, threshold) } ?: false
+    fun up(app: String, threshold: LocalDateTime) = App.up(states, app, threshold)
     fun up(app: String) = up(app, LocalDateTime.MIN)
 
     fun up(app: String, instance: String, time: LocalDateTime) {
-        Instance.up(states.getOrPut(app) { mutableListOf() }, instance, time)
+        App.up(states, app, instance, time)
     }
 
     fun down(app: String, instance: String, time: LocalDateTime) {
-        Instance.down(states.getOrPut(app) { mutableListOf() }, instance, time)
+        App.down(states, app, instance, time)
     }
 
     fun report(threshold: LocalDateTime): Map<String, Int> {
@@ -134,20 +146,55 @@ internal class AppStates {
     }
 
     fun instances(threshold: LocalDateTime): Map<String, Pair<Int, LocalDateTime>> {
-        return states.mapValues { (if (Instance.up(it.value, threshold)) 1 else 0) to Instance.lastActiveTime(it.value) }
+        return App.instances(states, threshold)
     }
 
     fun reportString(threshold: LocalDateTime): String {
-        val sb = StringBuffer()
-        sb.append("Application states since ${threshold.format(timestampFormat)}:\n")
-        states.forEach { (app, instances) ->
-            sb.append("\t")
-                .append(app)
-                .append(": ")
-                .appendln(if (Instance.up(instances, threshold)) "UP" else "DOWN")
-            instances.forEach { sb.append("\t\t").appendln(it.toString()) }
+        return App.reportString(states, threshold)
+    }
+
+    private class App(
+        private val name: String,
+        private val instances: MutableList<Instance> = mutableListOf(),
+        private var time: LocalDateTime
+    ) {
+        internal companion object {
+            fun up(states: List<App>, app: String, threshold: LocalDateTime) =
+                states.firstOrNull { it.name == app }?.let { Instance.up(it.instances, threshold) } ?: false
+
+            fun up(states: MutableList<App>, app: String, instance: String, time: LocalDateTime) {
+                Instance.up(findOrCreateApp(states, app, time).instances, instance, time)
+            }
+
+            fun down(states: MutableList<App>, app: String, instance: String, time: LocalDateTime) {
+                Instance.down(findOrCreateApp(states, app, time).instances, instance, time)
+            }
+
+            fun instances(states: List<App>, threshold: LocalDateTime): Map<String, Pair<Int, LocalDateTime>> {
+                return states.associateBy { it.name }
+                    .mapValues { (if (Instance.up(it.value.instances, threshold)) 1 else 0) to it.value.time }
+            }
+
+            fun reportString(states: List<App>, threshold: LocalDateTime): String {
+                val sb = StringBuffer()
+                sb.append("Application states since ${threshold.format(timestampFormat)}:\n")
+                states.forEach { app ->
+                    sb.append("\t")
+                        .append(app.name)
+                        .append(": ")
+                        .appendln(if (Instance.up(app.instances, threshold)) "UP" else "DOWN")
+                    app.instances.forEach { sb.append("\t\t").appendln(it.toString()) }
+                }
+                return sb.toString()
+            }
+
+            private fun findOrCreateApp(states: MutableList<App>, app: String, time: LocalDateTime) =
+                states.firstOrNull { it.name == app }?.also {
+                    it.time = maxOf(it.time, time)
+                } ?: App(app, mutableListOf(), time).also {
+                    states.add(it)
+                }
         }
-        return sb.toString()
     }
 
     private class Instance(private val id: String, private var time: LocalDateTime) {
@@ -168,8 +215,6 @@ internal class AppStates {
 
             fun up(list: MutableList<Instance>, threshold: LocalDateTime) =
                 list.any { it.time >= threshold }
-
-            fun lastActiveTime(list: MutableList<Instance>) = list.maxBy { it.time }?.time ?: LocalDateTime.MIN
         }
     }
 }

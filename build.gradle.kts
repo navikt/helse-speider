@@ -4,7 +4,7 @@ val junitJupiterVersion = "5.6.0"
 val mainClass = "no.nav.helse.speider.AppKt"
 
 plugins {
-    kotlin("jvm") version "1.3.70"
+    kotlin("jvm") version "1.3.72"
 }
 
 buildscript {
@@ -17,7 +17,7 @@ val githubUser: String by project
 val githubPassword: String by project
 
 dependencies {
-    implementation("com.github.navikt:rapids-and-rivers:1.a1c8748")
+    implementation("com.github.navikt:rapids-and-rivers:1.73dddb5")
 
     testImplementation("org.junit.jupiter:junit-jupiter-api:$junitJupiterVersion")
     testImplementation("org.junit.jupiter:junit-jupiter-params:$junitJupiterVersion")
