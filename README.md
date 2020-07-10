@@ -1,12 +1,11 @@
-speider [![Actions Status](https://github.com/navikt/helse-speider/workflows/master/badge.svg)](https://github.com/navikt/helse-speider/actions)
-=============
+# Speider
+![Bygg og deploy](https://github.com/navikt/helse-speider/workflows/Bygg%20og%20deploy/badge.svg)
 
+## Beskrivelse
 Speider etter mikrotjenester som ikke oppfører seg.
 
-# Henvendelser
-
+## Henvendelser
 Spørsmål knyttet til koden eller prosjektet kan stilles som issues her på GitHub.
 
-## For NAV-ansatte
-
+### For NAV-ansatte
 Interne henvendelser kan sendes via Slack i kanalen #område-helse.
