@@ -1,13 +1,7 @@
-val junitJupiterVersion = "5.6.2"
+val junitJupiterVersion = "5.7.1"
 
 plugins {
-    kotlin("jvm") version "1.3.72"
-}
-
-buildscript {
-    dependencies {
-        classpath("org.junit.platform:junit-platform-gradle-plugin:1.2.0")
-    }
+    kotlin("jvm") version "1.4.30"
 }
 
 repositories {
@@ -17,7 +11,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.github.navikt:rapids-and-rivers:fa839faa1c")
+    implementation("com.github.navikt:rapids-and-rivers:1.a77261b")
 
     testImplementation("org.junit.jupiter:junit-jupiter-api:$junitJupiterVersion")
     testImplementation("org.junit.jupiter:junit-jupiter-params:$junitJupiterVersion")
@@ -26,10 +20,10 @@ dependencies {
 
 tasks {
     compileKotlin {
-        kotlinOptions.jvmTarget = "12"
+        kotlinOptions.jvmTarget = "15"
     }
     compileTestKotlin {
-        kotlinOptions.jvmTarget = "12"
+        kotlinOptions.jvmTarget = "15"
     }
 
     named<Jar>("jar") {

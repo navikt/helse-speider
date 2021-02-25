@@ -41,11 +41,11 @@ fun main() {
             validate { it.requireKey("app_name", "instance_id") }
             validate { it.require("@opprettet", JsonNode::asLocalDateTime) }
         }.register(object : River.PacketListener {
-            override fun onPacket(packet: JsonMessage, context: RapidsConnection.MessageContext) {
+            override fun onPacket(packet: JsonMessage, context: MessageContext) {
                 appStates.up(packet["app_name"].asText(), packet["instance_id"].asText(), packet["@opprettet"].asLocalDateTime())
             }
 
-            override fun onError(problems: MessageProblems, context: RapidsConnection.MessageContext) {
+            override fun onError(problems: MessageProblems, context: MessageContext) {
                 logger.error("forstod ikke application_up:\n${problems.toExtendedReport()}")
             }
         })
@@ -56,7 +56,7 @@ fun main() {
             validate { it.require("ping_time", JsonNode::asLocalDateTime) }
             validate { it.require("pong_time", JsonNode::asLocalDateTime) }
         }.register(object : River.PacketListener {
-            override fun onPacket(packet: JsonMessage, context: RapidsConnection.MessageContext) {
+            override fun onPacket(packet: JsonMessage, context: MessageContext) {
                 val app = packet["app_name"].asText()
                 val instance = packet["instance_id"].asText()
                 val pingTime = packet["ping_time"].asLocalDateTime()
@@ -66,7 +66,7 @@ fun main() {
                 appStates.up(app, instance, pongTime)
             }
 
-            override fun onError(problems: MessageProblems, context: RapidsConnection.MessageContext) {
+            override fun onError(problems: MessageProblems, context: MessageContext) {
                 logger.error("forstod ikke pong:\n${problems.toExtendedReport()}")
             }
         })
@@ -76,11 +76,11 @@ fun main() {
             validate { it.requireKey("app_name", "instance_id") }
             validate { it.require("@opprettet", JsonNode::asLocalDateTime) }
         }.register(object : River.PacketListener {
-            override fun onPacket(packet: JsonMessage, context: RapidsConnection.MessageContext) {
+            override fun onPacket(packet: JsonMessage, context: MessageContext) {
                 appStates.down(packet["app_name"].asText(), packet["instance_id"].asText(), packet["@opprettet"].asLocalDateTime())
             }
 
-            override fun onError(problems: MessageProblems, context: RapidsConnection.MessageContext) {
+            override fun onError(problems: MessageProblems, context: MessageContext) {
                 logger.error("forstod ikke application_down:\n${problems.toExtendedReport()}")
             }
         })
@@ -158,7 +158,7 @@ internal class AppStates {
         private val instances: MutableList<Instance> = mutableListOf(),
         private var time: LocalDateTime
     ) {
-        internal companion object {
+        companion object {
             fun up(states: List<App>, app: String, threshold: LocalDateTime) =
                 states.firstOrNull { it.name == app }?.let { Instance.up(it.instances, threshold) } ?: false
 
@@ -182,8 +182,8 @@ internal class AppStates {
                     sb.append("\t")
                         .append(app.name)
                         .append(": ")
-                        .appendln(if (Instance.up(app.instances, threshold)) "UP" else "DOWN")
-                    app.instances.forEach { sb.append("\t\t").appendln(it.toString()) }
+                        .appendLine(if (Instance.up(app.instances, threshold)) "UP" else "DOWN")
+                    app.instances.forEach { sb.append("\t\t").appendLine(it.toString()) }
                 }
                 return sb.toString()
             }
