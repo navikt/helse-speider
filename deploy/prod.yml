@@ -35,6 +35,9 @@ spec:
     pool: nav-prod
   vault:
     enabled: true
+    paths:
+      - mountPath: /var/run/secrets/nais.io/service_user
+        kvPath: /serviceuser/data/prod/srvspeider
   env:
   - name: KAFKA_PREFER_ON_PREM
     value: "true"
