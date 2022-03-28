@@ -1,7 +1,7 @@
 val junitJupiterVersion = "5.8.2"
 
 plugins {
-    kotlin("jvm") version "1.5.31"
+    kotlin("jvm") version "1.6.10"
 }
 
 repositories {
@@ -10,7 +10,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.github.navikt:rapids-and-rivers:20210617121814-3e67e4d")
+    implementation("com.github.navikt:rapids-and-rivers:2022.03.28-13.47.90bad8dc90f2")
 
     testImplementation("org.junit.jupiter:junit-jupiter-api:$junitJupiterVersion")
     testImplementation("org.junit.jupiter:junit-jupiter-params:$junitJupiterVersion")
@@ -19,10 +19,10 @@ dependencies {
 
 tasks {
     compileKotlin {
-        kotlinOptions.jvmTarget = "16"
+        kotlinOptions.jvmTarget = "17"
     }
     compileTestKotlin {
-        kotlinOptions.jvmTarget = "16"
+        kotlinOptions.jvmTarget = "17"
     }
 
     named<Jar>("jar") {
@@ -52,6 +52,6 @@ tasks {
     }
 
     withType<Wrapper> {
-        gradleVersion = "7.3.1"
+        gradleVersion = "7.4.1"
     }
 }
