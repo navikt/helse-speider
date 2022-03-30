@@ -10,7 +10,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.github.navikt:rapids-and-rivers:2022.03.28-13.47.90bad8dc90f2")
+    implementation("com.github.navikt:rapids-and-rivers:2022.03.30-21.22.dbaa41649bd3")
 
     testImplementation("org.junit.jupiter:junit-jupiter-api:$junitJupiterVersion")
     testImplementation("org.junit.jupiter:junit-jupiter-params:$junitJupiterVersion")
