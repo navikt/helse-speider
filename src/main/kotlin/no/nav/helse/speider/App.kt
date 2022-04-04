@@ -87,26 +87,30 @@ fun main() {
     }.start()
 }
 
+private fun Boolean.toInt() = if (this) 1 else 0
 private suspend fun CoroutineScope.printerJob(rapidsConnection: RapidsConnection, appStates: AppStates) {
     while (isActive) {
         delay(Duration.ofSeconds(15))
         val threshold = LocalDateTime.now().minusMinutes(1)
         logger.info(appStates.reportString(threshold))
-        appStates.report(threshold).also { report ->
-            report.forEach { (app, state) ->
-                stateGauge.labels(app).set(state.toDouble())
-            }
+        appStates.report(threshold).onEach { (app, state) ->
+            stateGauge.labels(app).set(state.toInt().toDouble())
         }
         appStates.instances(threshold).also { report ->
-            rapidsConnection.publish(JsonMessage.newMessage(mapOf(
-                "@event_name" to "app_status",
-                "@opprettet" to LocalDateTime.now(),
+            rapidsConnection.publish(JsonMessage.newMessage("app_status", mapOf(
                 "threshold" to threshold,
-                "states" to report.map {
+                "states" to report.map { (appName, info) ->
                     mapOf<String, Any>(
-                        "app" to it.key,
-                        "state" to it.value.first,
-                        "last_active_time" to it.value.second
+                        "app" to appName,
+                        "state" to info.first.toInt(),
+                        "last_active_time" to info.second,
+                        "instances" to info.third.map { (instanceId, lastActive, isUp) ->
+                            mapOf(
+                                "instance" to instanceId,
+                                "last_active_time" to lastActive,
+                                "state" to isUp.toInt()
+                            )
+                        }
                     )
                 }
             )).toJson())
@@ -141,13 +145,11 @@ internal class AppStates {
         App.down(states, app, instance, time)
     }
 
-    fun report(threshold: LocalDateTime): Map<String, Int> {
+    fun report(threshold: LocalDateTime): Map<String, Boolean> {
         return instances(threshold).mapValues { it.value.first }
     }
 
-    fun instances(threshold: LocalDateTime): Map<String, Pair<Int, LocalDateTime>> {
-        return App.instances(states, threshold)
-    }
+    fun instances(threshold: LocalDateTime) = App.instances(states, threshold)
 
     fun reportString(threshold: LocalDateTime): String {
         return App.reportString(states, threshold)
@@ -170,9 +172,10 @@ internal class AppStates {
                 Instance.down(findOrCreateApp(states, app, time).instances, instance, time)
             }
 
-            fun instances(states: List<App>, threshold: LocalDateTime): Map<String, Pair<Int, LocalDateTime>> {
-                return states.associateBy { it.name }
-                    .mapValues { (if (Instance.up(it.value.instances, threshold)) 1 else 0) to it.value.time }
+            fun instances(states: List<App>, threshold: LocalDateTime): Map<String, Triple<Boolean, LocalDateTime, List<Triple<String, LocalDateTime, Boolean>>>> {
+                return states.associate { app ->
+                    app.name to Triple(Instance.up(app.instances, threshold), app.time, Instance.list(app.instances, threshold))
+                }
             }
 
             fun reportString(states: List<App>, threshold: LocalDateTime): String {
@@ -202,7 +205,10 @@ internal class AppStates {
             return "$id: last active at ${time.format(timestampFormat)}"
         }
 
+        fun up(threshold: LocalDateTime) = time >= threshold
+
         internal companion object {
+            fun list(list: List<Instance>, threshold: LocalDateTime) = list.map { Triple(it.id, it.time, it.up(threshold)) }
             fun up(list: MutableList<Instance>, instance: String, time: LocalDateTime) {
                 list.firstOrNull { it.id == instance }?.also {
                     if (it.time < time) it.time = time
@@ -214,7 +220,7 @@ internal class AppStates {
             }
 
             fun up(list: MutableList<Instance>, threshold: LocalDateTime) =
-                list.any { it.time >= threshold }
+                list.any { it.up(threshold) }
         }
     }
 }
