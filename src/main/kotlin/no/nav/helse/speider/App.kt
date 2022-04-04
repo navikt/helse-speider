@@ -10,7 +10,6 @@ import org.apache.kafka.clients.admin.AdminClient
 import org.apache.kafka.clients.producer.KafkaProducer
 import org.apache.kafka.clients.producer.Producer
 import org.apache.kafka.clients.producer.ProducerRecord
-import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.config.SslConfigs
 import org.apache.kafka.common.security.auth.SecurityProtocol
 import org.apache.kafka.common.serialization.StringSerializer
@@ -97,7 +96,7 @@ fun main() {
                 val pongTime = packet["pong_time"].asLocalDateTime()
 
                 logger.info("{}-{} svarte på ping etter {} sekunder", app, instance, SECONDS.between(pingTime, pongTime))
-                appStates.up(app, instance, pongTime)
+                appStates.ping(app, instance, pongTime)
             }
 
             override fun onError(problems: MessageProblems, context: MessageContext) {
@@ -179,6 +178,10 @@ internal class AppStates {
         App.up(states, app, instance, time)
     }
 
+    fun ping(app: String, instance: String, time: LocalDateTime) {
+        App.ping(states, app, instance, time)
+    }
+
     fun down(app: String, instance: String, time: LocalDateTime) {
         App.down(states, app, instance, time)
     }
@@ -198,16 +201,30 @@ internal class AppStates {
         private val instances: MutableList<Instance> = mutableListOf(),
         private var time: LocalDateTime
     ) {
+        private val downInstances: MutableList<Pair<String, LocalDateTime>> = mutableListOf()
+
         companion object {
             fun up(states: List<App>, app: String, threshold: LocalDateTime) =
                 states.firstOrNull { it.name == app }?.let { Instance.up(it.instances, threshold) } ?: false
 
-            fun up(states: MutableList<App>, app: String, instance: String, time: LocalDateTime) {
-                Instance.up(findOrCreateApp(states, app, time).instances, instance, time)
+            fun up(states: MutableList<App>, appName: String, instance: String, time: LocalDateTime) {
+                val app = findOrCreateApp(states, appName, time)
+                // re-active a downed app if we've recieved the application_up event
+                app.downInstances.removeAll { it.first == instance }
+                Instance.up(app.instances, instance, time)
             }
 
-            fun down(states: MutableList<App>, app: String, instance: String, time: LocalDateTime) {
-                Instance.down(findOrCreateApp(states, app, time).instances, instance, time)
+            fun ping(states: MutableList<App>, appName: String, instance: String, time: LocalDateTime) {
+                val app = findOrCreateApp(states, appName, time)
+                if (app.downInstances.any { it.first == instance }) return // don't re-active a downed app
+                app.downInstances.removeAll { it.second < LocalDateTime.now().minusHours(6) }
+                Instance.up(app.instances, instance, time)
+            }
+
+            fun down(states: MutableList<App>, appName: String, instance: String, time: LocalDateTime) {
+                val app = findOrCreateApp(states, appName, time)
+                if (!Instance.down(app.instances, instance, time)) return
+                app.downInstances.add(instance to LocalDateTime.now())
             }
 
             fun instances(states: List<App>, threshold: LocalDateTime): Map<String, Triple<Boolean, LocalDateTime, List<Triple<String, LocalDateTime, Boolean>>>> {
@@ -253,9 +270,8 @@ internal class AppStates {
                 } ?: list.add(Instance(instance, time))
             }
 
-            fun down(list: MutableList<Instance>, instance: String, time: LocalDateTime) {
-                list.removeIf { it.id == instance && it.time < time }
-            }
+            fun down(list: MutableList<Instance>, instance: String, time: LocalDateTime) =
+                list.removeIf { it.id == instance && it.time <= time }
 
             fun up(list: MutableList<Instance>, threshold: LocalDateTime) =
                 list.any { it.up(threshold) }
