@@ -7,9 +7,13 @@ import kotlinx.coroutines.time.delay
 import no.nav.helse.rapids_rivers.*
 import org.apache.kafka.clients.CommonClientConfigs
 import org.apache.kafka.clients.admin.AdminClient
+import org.apache.kafka.clients.producer.KafkaProducer
+import org.apache.kafka.clients.producer.Producer
+import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.config.SslConfigs
 import org.apache.kafka.common.security.auth.SecurityProtocol
+import org.apache.kafka.common.serialization.StringSerializer
 import org.slf4j.LoggerFactory
 import java.time.Duration
 import java.time.LocalDateTime
@@ -25,7 +29,7 @@ private val logger = LoggerFactory.getLogger("no.nav.helse.speider.App")
 fun main() {
     val env = System.getenv()
 
-    val adminClient = AdminClient.create(Properties().apply {
+    val props = Properties().apply {
         put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, env.getValue("KAFKA_BROKERS"))
         put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SSL.name)
         put(SslConfigs.SSL_ENDPOINT_IDENTIFICATION_ALGORITHM_CONFIG, "")
@@ -35,7 +39,9 @@ fun main() {
         put(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG,  env.getValue("KAFKA_CREDSTORE_PASSWORD"))
         put(SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG, env.getValue("KAFKA_KEYSTORE_PATH"))
         put(SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG, env.getValue("KAFKA_CREDSTORE_PASSWORD"))
-    })
+    }
+    val adminClient = AdminClient.create(props)
+    val pingProducer = KafkaProducer<String, String>(props, StringSerializer(), StringSerializer())
 
     val topic = env.getValue("KAFKA_RAPID_TOPIC")
     val partitionsCount = adminClient.describeTopics(listOf(topic))
@@ -55,7 +61,7 @@ fun main() {
         register(object : RapidsConnection.StatusListener {
             override fun onStartup(rapidsConnection: RapidsConnection) {
                 statusPrinterJob = GlobalScope.launch { printerJob(rapidsConnection, appStates) }
-                scheduledPingJob = GlobalScope.launch { pinger(rapidsConnection, partitionsCount) }
+                scheduledPingJob = GlobalScope.launch { pinger(pingProducer, topic, partitionsCount) }
             }
 
             override fun onShutdown(rapidsConnection: RapidsConnection) {
@@ -146,15 +152,16 @@ private suspend fun CoroutineScope.printerJob(rapidsConnection: RapidsConnection
     }
 }
 
-private suspend fun CoroutineScope.pinger(rapidsConnection: RapidsConnection, partitionCount: Int) {
+private suspend fun CoroutineScope.pinger(producer: Producer<String, String>, topic: String, partitionCount: Int) {
     while (isActive) {
         delay(Duration.ofSeconds(30))
         val packet = JsonMessage.newMessage("ping")
         packet["ping_time"] = LocalDateTime.now()
-        // when publishing a record without a key (and partition),
-        // the record will be produced to the partitions in a round-robin manner.
-        // Ensure that a ping is sent to each partition by repeating it as many times as the number of partitions
-        repeat(partitionCount) { rapidsConnection.publish(packet.toJson()) }
+        // produces a ping to each partition
+        repeat(partitionCount) { partition ->
+            producer.send(ProducerRecord(topic, partition, UUID.randomUUID().toString(), packet.toJson()))
+        }
+        producer.flush()
     }
 }
 
