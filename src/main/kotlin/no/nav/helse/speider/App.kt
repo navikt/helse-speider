@@ -208,21 +208,21 @@ internal class AppStates {
                 states.firstOrNull { it.name == app }?.let { Instance.up(it.instances, threshold) } ?: false
 
             fun up(states: MutableList<App>, appName: String, instance: String, time: LocalDateTime) {
-                val app = findOrCreateApp(states, appName, time)
+                val app = findOrCreateApp(states, appName, time) ?: return
                 // re-active a downed app if we've recieved the application_up event
                 app.downInstances.removeAll { it.first == instance }
                 Instance.up(app.instances, instance, time)
             }
 
             fun ping(states: MutableList<App>, appName: String, instance: String, time: LocalDateTime) {
-                val app = findOrCreateApp(states, appName, time)
+                val app = findOrCreateApp(states, appName, time) ?: return
                 if (app.downInstances.any { it.first == instance }) return // don't re-active a downed app
                 app.downInstances.removeAll { it.second < LocalDateTime.now().minusHours(6) }
                 Instance.up(app.instances, instance, time)
             }
 
             fun down(states: MutableList<App>, appName: String, instance: String, time: LocalDateTime) {
-                val app = findOrCreateApp(states, appName, time)
+                val app = findOrCreateApp(states, appName, time) ?: return
                 if (!Instance.down(app.instances, instance, time)) return
                 app.downInstances.add(instance to LocalDateTime.now())
             }
@@ -246,12 +246,14 @@ internal class AppStates {
                 return sb.toString()
             }
 
-            private fun findOrCreateApp(states: MutableList<App>, app: String, time: LocalDateTime) =
-                states.firstOrNull { it.name == app }?.also {
+            private fun findOrCreateApp(states: MutableList<App>, app: String, time: LocalDateTime): App? {
+                if (app.contains("speider")) return null
+                return states.firstOrNull { it.name == app }?.also {
                     it.time = maxOf(it.time, time)
                 } ?: App(app, mutableListOf(), time).also {
                     states.add(it)
                 }
+            }
         }
     }
 
