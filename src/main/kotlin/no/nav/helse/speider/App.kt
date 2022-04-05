@@ -117,6 +117,20 @@ fun main() {
                 logger.error("forstod ikke application_down:\n${problems.toExtendedReport()}")
             }
         })
+
+        River(this).apply {
+            validate { it.demandValue("@event_name", "application_stop") }
+            validate { it.requireKey("app_name", "instance_id") }
+            validate { it.require("@opprettet", JsonNode::asLocalDateTime) }
+        }.register(object : River.PacketListener {
+            override fun onPacket(packet: JsonMessage, context: MessageContext) {
+                appStates.down(packet["app_name"].asText(), packet["instance_id"].asText(), packet["@opprettet"].asLocalDateTime())
+            }
+
+            override fun onError(problems: MessageProblems, context: MessageContext) {
+                logger.error("forstod ikke application_stop:\n${problems.toExtendedReport()}")
+            }
+        })
     }.start()
 }
 
