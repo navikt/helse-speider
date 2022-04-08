@@ -261,7 +261,6 @@ internal class AppStates {
             }
 
             private fun findOrCreateApp(states: MutableList<App>, app: String, time: LocalDateTime): App? {
-                if (app.contains("speider")) return null
                 return states.firstOrNull { it.name == app }?.also {
                     it.time = maxOf(it.time, time)
                 } ?: App(app, mutableListOf(), time).also {
