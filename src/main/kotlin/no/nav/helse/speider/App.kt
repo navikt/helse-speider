@@ -204,7 +204,7 @@ internal class AppStates {
         return instances(threshold).mapValues { it.value.first }
     }
 
-    fun instances(threshold: LocalDateTime) = App.instances(states.filterNot { it.name == "sparsom" }, threshold)
+    fun instances(threshold: LocalDateTime) = App.instances(states, threshold)
 
     fun reportString(threshold: LocalDateTime): String {
         return App.reportString(states, threshold)
