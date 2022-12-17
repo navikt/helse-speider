@@ -25,6 +25,8 @@ private val stateGauge = Gauge.build("app_status", "Gjeldende status på apps")
     .register()
 private val logger = LoggerFactory.getLogger("no.nav.helse.speider.App")
 
+val ignoredApps = setOf("dataprodukt-forstegangsbehandling")
+
 fun main() {
     val env = System.getenv()
 
@@ -40,7 +42,7 @@ fun main() {
         put(SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG, env.getValue("KAFKA_CREDSTORE_PASSWORD"))
     }
     val adminClient = AdminClient.create(props)
-    val pingProducer = KafkaProducer<String, String>(props, StringSerializer(), StringSerializer())
+    val pingProducer = KafkaProducer(props, StringSerializer(), StringSerializer())
 
     val topic = env.getValue("KAFKA_RAPID_TOPIC")
     val partitionsCount = adminClient.describeTopics(listOf(topic))
@@ -204,7 +206,7 @@ internal class AppStates {
         return instances(threshold).mapValues { it.value.first }
     }
 
-    fun instances(threshold: LocalDateTime) = App.instances(states, threshold)
+    fun instances(threshold: LocalDateTime) = App.instances(states.filterNot { it.isIgnored }, threshold)
 
     fun reportString(threshold: LocalDateTime): String {
         return App.reportString(states, threshold)
@@ -215,6 +217,8 @@ internal class AppStates {
         private val instances: MutableList<Instance> = mutableListOf(),
         private var time: LocalDateTime
     ) {
+        val isIgnored = name in ignoredApps
+
         private val downInstances: MutableList<Pair<String, LocalDateTime>> = mutableListOf()
 
         companion object {
@@ -222,21 +226,21 @@ internal class AppStates {
                 states.firstOrNull { it.name == app }?.let { Instance.up(it.instances, threshold) } ?: false
 
             fun up(states: MutableList<App>, appName: String, instance: String, time: LocalDateTime) {
-                val app = findOrCreateApp(states, appName, time) ?: return
-                // re-active a downed app if we've recieved the application_up event
+                val app = findOrCreateApp(states, appName, time)
+                // re-active a downed app if we've received the application_up event
                 app.downInstances.removeAll { it.first == instance }
                 Instance.up(app.instances, instance, time)
             }
 
             fun ping(states: MutableList<App>, appName: String, instance: String, time: LocalDateTime) {
-                val app = findOrCreateApp(states, appName, time) ?: return
+                val app = findOrCreateApp(states, appName, time)
                 if (app.downInstances.any { it.first == instance }) return // don't re-active a downed app
                 app.downInstances.removeAll { it.second < LocalDateTime.now().minusHours(6) }
                 Instance.up(app.instances, instance, time)
             }
 
             fun down(states: MutableList<App>, appName: String, instance: String, time: LocalDateTime) {
-                val app = findOrCreateApp(states, appName, time) ?: return
+                val app = findOrCreateApp(states, appName, time)
                 if (!Instance.down(app.instances, instance, time)) return
                 app.downInstances.add(instance to LocalDateTime.now())
             }
@@ -260,7 +264,7 @@ internal class AppStates {
                 return sb.toString()
             }
 
-            private fun findOrCreateApp(states: MutableList<App>, app: String, time: LocalDateTime): App? {
+            private fun findOrCreateApp(states: MutableList<App>, app: String, time: LocalDateTime): App {
                 return states.firstOrNull { it.name == app }?.also {
                     it.time = maxOf(it.time, time)
                 } ?: App(app, mutableListOf(), time).also {
@@ -277,7 +281,7 @@ internal class AppStates {
 
         fun up(threshold: LocalDateTime) = time >= threshold
 
-        internal companion object {
+        companion object {
             fun list(list: List<Instance>, threshold: LocalDateTime) = list.map { Triple(it.id, it.time, it.up(threshold)) }
             fun up(list: MutableList<Instance>, instance: String, time: LocalDateTime) {
                 list.firstOrNull { it.id == instance }?.also {
