@@ -25,7 +25,7 @@ private val stateGauge = Gauge.build("app_status", "Gjeldende status på apps")
     .register()
 private val logger = LoggerFactory.getLogger("no.nav.helse.speider.App")
 
-val ignoredApps = emptySet<String>()
+val ignoredApps = setOf("spesialist-migrering")
 
 fun main() {
     val env = System.getenv()
