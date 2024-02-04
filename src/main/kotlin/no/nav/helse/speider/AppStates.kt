@@ -98,11 +98,17 @@ internal class AppStates {
             }
 
             private fun findOrCreateApp(states: MutableList<App>, app: String, time: LocalDateTime): App {
-                return states.firstOrNull { it.name == app }?.also {
+                return states.findExistingAndUpdateActiveTime(app, time) ?: states.registerNewApp(app, time)
+            }
+
+            private fun List<App>.findExistingAndUpdateActiveTime(app: String, time: LocalDateTime): App? {
+                return firstOrNull { it.name == app }?.also {
                     it.time = maxOf(it.time, time)
-                } ?: App(app, mutableListOf(), time).also {
-                    states.add(it)
                 }
+            }
+
+            private fun MutableList<App>.registerNewApp(app: String, time: LocalDateTime): App {
+                return App(app, mutableListOf(), time).also { add(it) }
             }
         }
     }
@@ -114,19 +120,37 @@ internal class AppStates {
 
         fun up(threshold: LocalDateTime) = time >= threshold
 
+        private fun updateLastActiveTime(newTime: LocalDateTime) {
+            this.time = maxOf(time, newTime)
+        }
+
+        private fun isInstanceDown(instance: String, downTime: LocalDateTime): Boolean {
+            if (this.id != instance) return false
+            if (downTime < this.time) return false
+            return true
+        }
+
         companion object {
             fun list(list: List<Instance>, threshold: LocalDateTime) = list.map { Triple(it.id, it.time, it.up(threshold)) }
             fun up(list: MutableList<Instance>, instance: String, time: LocalDateTime) {
-                list.firstOrNull { it.id == instance }?.also {
-                    if (it.time < time) it.time = time
-                } ?: list.add(Instance(instance, time))
+                 if (!list.updateLastActiveTime(instance, time)) list.registerNewInstance(instance, time)
             }
 
             fun down(list: MutableList<Instance>, instance: String, time: LocalDateTime) =
-                list.removeIf { it.id == instance && it.time <= time }
+                list.removeIf { it.isInstanceDown(instance, time) }
 
             fun up(list: MutableList<Instance>, threshold: LocalDateTime) =
                 list.any { it.up(threshold) }
+
+            private fun MutableList<Instance>.registerNewInstance(instance: String, time: LocalDateTime) {
+                add(Instance(instance, time))
+            }
+
+            private fun List<Instance>.updateLastActiveTime(instance: String, time: LocalDateTime): Boolean {
+                val it = firstOrNull { it.id == instance } ?: return false
+                it.updateLastActiveTime(time)
+                return true
+            }
         }
     }
 }
