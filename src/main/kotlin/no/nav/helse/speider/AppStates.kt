@@ -10,9 +10,6 @@ internal class AppStates {
 
     private val states = mutableListOf<App>()
 
-    fun up(app: String, threshold: LocalDateTime) = App.up(states, app, threshold)
-    fun up(app: String) = up(app, LocalDateTime.MIN)
-
     fun up(app: String, instance: String, time: LocalDateTime) {
         App.up(states, app, instance, time)
     }
@@ -45,9 +42,6 @@ internal class AppStates {
         private val downInstances: MutableList<Pair<String, LocalDateTime>> = mutableListOf()
 
         companion object {
-            fun up(states: List<App>, app: String, threshold: LocalDateTime) =
-                states.firstOrNull { it.name == app }?.let { Instance.up(it.instances, threshold) } ?: false
-
             fun up(states: MutableList<App>, appName: String, instance: String, time: LocalDateTime) {
                 val app = findOrCreateApp(states, appName, time)
                 // re-active a downed app if we've received the application_up event

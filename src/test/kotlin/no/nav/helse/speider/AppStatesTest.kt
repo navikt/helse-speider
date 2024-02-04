@@ -27,51 +27,53 @@ internal class AppStatesTest {
     @Test
     internal fun `app is up when any instance is up`() {
         states.up(APP, INSTANCE_1, now)
-        assertTrue(states.up(APP))
+        assertTrue(states.isUp(APP))
         states.down(APP, INSTANCE_2, now)
-        assertTrue(states.up(APP))
+        assertTrue(states.isUp(APP))
     }
 
     @Test
     internal fun `app is down when all instances are down`() {
-        assertFalse(states.up(APP))
+        assertFalse(states.isUp(APP))
         states.down(APP, INSTANCE_1, now)
-        assertFalse(states.up(APP))
+        assertFalse(states.isUp(APP))
         states.down(APP, INSTANCE_2, now)
-        assertFalse(states.up(APP))
+        assertFalse(states.isUp(APP))
     }
 
     @Test
     internal fun `earlier events does not overwrite newer`() {
         states.up(APP, INSTANCE_1, now)
-        assertTrue(states.up(APP))
+        assertTrue(states.isUp(APP))
         states.down(APP, INSTANCE_1, now.minusHours(1))
-        assertTrue(states.up(APP))
+        assertTrue(states.isUp(APP))
     }
 
     @Test
     internal fun `newer events does overwrite earlier`() {
         states.up(APP, INSTANCE_1, now.minusHours(1))
-        assertTrue(states.up(APP))
+        assertTrue(states.isUp(APP))
         states.down(APP, INSTANCE_1, now)
-        assertFalse(states.up(APP))
+        assertFalse(states.isUp(APP))
     }
 
     @Test
     internal fun `assume inresponsive if last event is older than threshold`() {
         states.up(APP, INSTANCE_1, TwoMinutesAgo)
-        assertTrue(states.up(APP, ThreeMinutesAgo))
-        assertFalse(states.up(APP, OneMinuteAgo))
+        assertTrue(states.isUp(APP, ThreeMinutesAgo))
+        assertFalse(states.isUp(APP, OneMinuteAgo))
         states.up(APP, INSTANCE_1, now)
-        assertTrue(states.up(APP, OneMinuteAgo))
+        assertTrue(states.isUp(APP, OneMinuteAgo))
     }
 
     @Test
     internal fun `up if any instance is above threshold`() {
         states.up(APP, INSTANCE_1, TwoMinutesAgo)
         states.down(APP, INSTANCE_2, OneMinuteAgo)
-        assertTrue(states.up(APP, ThreeMinutesAgo))
-        assertTrue(states.up(APP, TwoMinutesAgo))
-        assertFalse(states.up(APP, OneMinuteAgo))
+        assertTrue(states.isUp(APP, ThreeMinutesAgo))
+        assertTrue(states.isUp(APP, TwoMinutesAgo))
+        assertFalse(states.isUp(APP, OneMinuteAgo))
     }
+
+    private fun AppStates.isUp(app: String, threshold: LocalDateTime = LocalDateTime.MIN) = this.report(threshold)[app] ?: false
 }
