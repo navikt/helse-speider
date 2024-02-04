@@ -23,8 +23,10 @@ private val stateGauge = Gauge.build("app_status", "Gjeldende status på apps")
     .labelNames("appnavn")
     .register()
 private val logger = LoggerFactory.getLogger("no.nav.helse.speider.App")
+val ignoredApps = emptySet<String>()
 
-val ignoredApps = setOf("sparsom")
+// tid mellom *nå* og forrige pong-melding for at en podd skal antas å være nede/ha lagg
+private val terskelForAntattNede = Duration.ofSeconds(60)
 
 fun main() {
     val env = System.getenv()
@@ -139,7 +141,7 @@ private fun Boolean.toInt() = if (this) 1 else 0
 private suspend fun CoroutineScope.printerJob(rapidsConnection: RapidsConnection, appStates: AppStates) {
     while (isActive) {
         delay(Duration.ofSeconds(15))
-        val threshold = LocalDateTime.now().minusMinutes(1)
+        val threshold = LocalDateTime.now().minus(terskelForAntattNede)
         logger.info(appStates.reportString(threshold))
         appStates.report(threshold).onEach { (app, state) ->
             stateGauge.labels(app).set(state.toInt().toDouble())
