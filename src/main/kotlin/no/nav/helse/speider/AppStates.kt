@@ -2,34 +2,50 @@ package no.nav.helse.speider
 
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import java.util.concurrent.locks.ReentrantReadWriteLock
+import kotlin.concurrent.read
+import kotlin.concurrent.write
 
 internal class AppStates {
     private companion object {
         private val timestampFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
     }
 
+    private val lock = ReentrantReadWriteLock()
     private val states = mutableListOf<App>()
 
     fun up(app: String, instance: String, time: LocalDateTime) {
-        App.up(states, app, instance, time)
+        lock.write {
+            App.up(states, app, instance, time)
+        }
     }
 
     fun ping(app: String, instance: String, time: LocalDateTime) {
-        App.ping(states, app, instance, time)
+        lock.write {
+            App.ping(states, app, instance, time)
+        }
     }
 
     fun down(app: String, instance: String, time: LocalDateTime) {
-        App.down(states, app, instance, time)
+        lock.write {
+            App.down(states, app, instance, time)
+        }
     }
 
     fun report(threshold: LocalDateTime): Map<String, Boolean> {
-        return instances(threshold).mapValues { it.value.first }
+        return lock.read {
+            instances(threshold).mapValues { it.value.first }
+        }
     }
 
-    fun instances(threshold: LocalDateTime) = App.instances(states.filterNot { it.isIgnored }, threshold)
+    fun instances(threshold: LocalDateTime) = lock.read {
+        App.instances(states.filterNot { it.isIgnored }, threshold)
+    }
 
     fun reportString(threshold: LocalDateTime): String {
-        return App.reportString(states, threshold)
+        return lock.read {
+            App.reportString(states, threshold)
+        }
     }
 
     private class App(
