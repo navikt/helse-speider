@@ -99,7 +99,7 @@ fun main() {
                 val pongTime = packet["pong_time"].asLocalDateTime()
 
                 logger.info("{}-{} svarte på ping etter {} sekunder (mottatt etter {} sekunder)", app, instance, SECONDS.between(pingTime, pongTime), SECONDS.between(pongTime, LocalDateTime.now()))
-                appStates.ping(app, instance, pongTime)
+                appStates.ping(app, instance, pingTime, pongTime)
             }
 
             override fun onError(problems: MessageProblems, context: MessageContext) {

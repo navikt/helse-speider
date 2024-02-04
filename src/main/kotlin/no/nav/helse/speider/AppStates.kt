@@ -1,5 +1,6 @@
 package no.nav.helse.speider
 
+import java.time.Duration
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.locks.ReentrantReadWriteLock
@@ -20,9 +21,9 @@ internal class AppStates {
         }
     }
 
-    fun ping(app: String, instance: String, time: LocalDateTime) {
+    fun ping(app: String, instance: String, pingTime: LocalDateTime, pongTime: LocalDateTime) {
         lock.write {
-            App.ping(states, app, instance, time)
+            App.ping(states, app, instance, pingTime, pongTime)
         }
     }
 
@@ -65,11 +66,11 @@ internal class AppStates {
                 Instance.up(app.instances, instance, time)
             }
 
-            fun ping(states: MutableList<App>, appName: String, instance: String, time: LocalDateTime) {
-                val app = findOrCreateApp(states, appName, time)
+            fun ping(states: MutableList<App>, appName: String, instance: String, pingTime: LocalDateTime, pongTime: LocalDateTime) {
+                val app = findOrCreateApp(states, appName, pongTime)
                 if (app.downInstances.any { it.first == instance }) return // don't re-active a downed app
                 app.downInstances.removeAll { it.second < LocalDateTime.now().minusHours(6) }
-                Instance.up(app.instances, instance, time)
+                Instance.up(app.instances, instance, pongTime, pingTime = pingTime)
             }
 
             fun down(states: MutableList<App>, appName: String, instance: String, time: LocalDateTime) {
@@ -97,8 +98,8 @@ internal class AppStates {
                 return sb.toString()
             }
 
-            private fun findOrCreateApp(states: MutableList<App>, app: String, time: LocalDateTime): App {
-                return states.findExistingAndUpdateActiveTime(app, time) ?: states.registerNewApp(app, time)
+            private fun findOrCreateApp(states: MutableList<App>, app: String, lastActivity: LocalDateTime): App {
+                return states.findExistingAndUpdateActiveTime(app, lastActivity) ?: states.registerNewApp(app, lastActivity)
             }
 
             private fun List<App>.findExistingAndUpdateActiveTime(app: String, time: LocalDateTime): App? {
@@ -113,27 +114,38 @@ internal class AppStates {
         }
     }
 
-    private class Instance(private val id: String, private var time: LocalDateTime) {
+    private class Instance(
+        private val id: String,
+        // the last time the app responded to a ping
+        private var lastPingTime: LocalDateTime,
+        // last time the app responded with an 'up' event or a 'pong'
+        private var lastActivity: LocalDateTime,
+        // last time speider registered the information
+        private var lastUpdated: LocalDateTime
+    ) {
+        private val latency get() = Duration.between(lastPingTime, lastActivity)
         override fun toString(): String {
-            return "$id: last active at ${time.format(timestampFormat)}"
+            return "$id: last active at ${lastActivity.format(timestampFormat)} with ${latency.toSeconds()} seconds latency (as on ${lastUpdated.format(timestampFormat)})"
         }
 
-        fun up(threshold: LocalDateTime) = time >= threshold
+        fun up(threshold: LocalDateTime) = lastActivity >= threshold
 
-        private fun updateLastActiveTime(newTime: LocalDateTime) {
-            this.time = maxOf(time, newTime)
+        private fun updateLastActiveTime(pingTime: LocalDateTime?, newTime: LocalDateTime) {
+            if (pingTime != null) this.lastPingTime = maxOf(lastPingTime, pingTime)
+            this.lastActivity = maxOf(lastActivity, newTime)
+            this.lastUpdated = LocalDateTime.now()
         }
 
         private fun isInstanceDown(instance: String, downTime: LocalDateTime): Boolean {
             if (this.id != instance) return false
-            if (downTime < this.time) return false
+            if (downTime < this.lastActivity) return false
             return true
         }
 
         companion object {
-            fun list(list: List<Instance>, threshold: LocalDateTime) = list.map { Triple(it.id, it.time, it.up(threshold)) }
-            fun up(list: MutableList<Instance>, instance: String, time: LocalDateTime) {
-                 if (!list.updateLastActiveTime(instance, time)) list.registerNewInstance(instance, time)
+            fun list(list: List<Instance>, threshold: LocalDateTime) = list.map { Triple(it.id, it.lastActivity, it.up(threshold)) }
+            fun up(list: MutableList<Instance>, instance: String, lastActivity: LocalDateTime, pingTime: LocalDateTime? = null) {
+                 if (!list.updateLastActiveTime(instance, pingTime, lastActivity)) list.registerNewInstance(instance, lastActivity)
             }
 
             fun down(list: MutableList<Instance>, instance: String, time: LocalDateTime) =
@@ -143,12 +155,12 @@ internal class AppStates {
                 list.any { it.up(threshold) }
 
             private fun MutableList<Instance>.registerNewInstance(instance: String, time: LocalDateTime) {
-                add(Instance(instance, time))
+                add(Instance(instance, time, time, LocalDateTime.now()))
             }
 
-            private fun List<Instance>.updateLastActiveTime(instance: String, time: LocalDateTime): Boolean {
+            private fun List<Instance>.updateLastActiveTime(instance: String, pingTime: LocalDateTime?, lastActivity: LocalDateTime): Boolean {
                 val it = firstOrNull { it.id == instance } ?: return false
-                it.updateLastActiveTime(time)
+                it.updateLastActiveTime(pingTime, lastActivity)
                 return true
             }
         }
