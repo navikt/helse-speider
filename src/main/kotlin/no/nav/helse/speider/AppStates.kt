@@ -125,7 +125,10 @@ internal class AppStates {
     ) {
         private val latency get() = Duration.between(lastPingTime, lastActivity)
         override fun toString(): String {
-            return "$id: last active at ${lastActivity.format(timestampFormat)} with ${latency.toSeconds()} seconds latency (as on ${lastUpdated.format(timestampFormat)})"
+            val now = LocalDateTime.now()
+            return "$id: last active ${Duration.between(lastActivity, now).toSeconds()} seconds ago (at ${lastActivity.format(timestampFormat)}) " +
+                    "with ${latency.toSeconds()} seconds latency " +
+                    "(as of ${Duration.between(lastUpdated, now).toSeconds()} seconds ago, on ${lastUpdated.format(timestampFormat)})"
         }
 
         fun up(threshold: LocalDateTime) = lastActivity >= threshold
