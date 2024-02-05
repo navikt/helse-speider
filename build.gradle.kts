@@ -22,7 +22,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.github.navikt:rapids-and-rivers:2024020422121707081126.d834a5d05bb2")
+    implementation("com.github.navikt:rapids-and-rivers:2024020507581707116327.1c34df474331")
 
     testImplementation("org.junit.jupiter:junit-jupiter:$junitJupiterVersion")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
