@@ -1,4 +1,4 @@
-val junitJupiterVersion = "5.10.0"
+val junitJupiterVersion = "5.10.2"
 
 plugins {
     kotlin("jvm") version "1.9.22"
