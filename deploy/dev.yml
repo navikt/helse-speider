@@ -31,10 +31,6 @@ spec:
   webproxy: true
   secureLogs:
     enabled: true
-  observability:
-    autoInstrumentation:
-      enabled: true
-      runtime: java
   kafka:
     pool: nav-dev
   vault:
