@@ -74,7 +74,7 @@ fun main() {
     RapidApplication.create(env, meterRegistry = meterRegistry).apply {
         register(object : RapidsConnection.StatusListener {
             override fun onStartup(rapidsConnection: RapidsConnection) {
-                runBlocking(Dispatchers.IO) {
+                CoroutineScope(Dispatchers.IO).apply {
                     statusPrinterJob = launch { printerJob(meterRegistry, rapidsConnection, appStates) }
                     scheduledPingJob = launch { pinger(pingProducer, topic, partitionsCount) }
                 }
