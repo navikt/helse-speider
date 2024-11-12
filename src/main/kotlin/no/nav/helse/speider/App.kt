@@ -1,7 +1,21 @@
 package no.nav.helse.speider
 
 import com.fasterxml.jackson.databind.JsonNode
-import io.prometheus.client.Gauge
+import com.github.navikt.tbd_libs.rapids_and_rivers.JsonMessage
+import com.github.navikt.tbd_libs.rapids_and_rivers.River
+import com.github.navikt.tbd_libs.rapids_and_rivers.asLocalDateTime
+import com.github.navikt.tbd_libs.rapids_and_rivers_api.MessageContext
+import com.github.navikt.tbd_libs.rapids_and_rivers_api.MessageMetadata
+import com.github.navikt.tbd_libs.rapids_and_rivers_api.MessageProblems
+import com.github.navikt.tbd_libs.rapids_and_rivers_api.RapidsConnection
+import io.micrometer.core.instrument.Clock
+import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.core.instrument.MultiGauge
+import io.micrometer.core.instrument.MultiGauge.Row
+import io.micrometer.core.instrument.Tags
+import io.micrometer.prometheusmetrics.PrometheusConfig
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry
+import io.prometheus.metrics.model.registry.PrometheusRegistry
 import kotlinx.coroutines.*
 import kotlinx.coroutines.time.delay
 import no.nav.helse.rapids_rivers.*
@@ -19,9 +33,6 @@ import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit.SECONDS
 import java.util.*
 
-private val stateGauge = Gauge.build("app_status", "Gjeldende status på apps")
-    .labelNames("appnavn")
-    .register()
 private val logger = LoggerFactory.getLogger("no.nav.helse.speider.App")
 val ignoredApps = emptySet<String>()
 
@@ -59,11 +70,14 @@ fun main() {
     var scheduledPingJob: Job? = null
     var statusPrinterJob: Job? = null
 
-    RapidApplication.create(env).apply {
+    val meterRegistry = PrometheusMeterRegistry(PrometheusConfig.DEFAULT, PrometheusRegistry.defaultRegistry, Clock.SYSTEM)
+    RapidApplication.create(env, meterRegistry = meterRegistry).apply {
         register(object : RapidsConnection.StatusListener {
             override fun onStartup(rapidsConnection: RapidsConnection) {
-                statusPrinterJob = GlobalScope.launch { printerJob(rapidsConnection, appStates) }
-                scheduledPingJob = GlobalScope.launch { pinger(pingProducer, topic, partitionsCount) }
+                runBlocking(Dispatchers.IO) {
+                    statusPrinterJob = launch { printerJob(meterRegistry, rapidsConnection, appStates) }
+                    scheduledPingJob = launch { pinger(pingProducer, topic, partitionsCount) }
+                }
             }
 
             override fun onShutdown(rapidsConnection: RapidsConnection) {
@@ -77,11 +91,11 @@ fun main() {
             validate { it.requireKey("app_name", "instance_id") }
             validate { it.require("@opprettet", JsonNode::asLocalDateTime) }
         }.register(object : River.PacketListener {
-            override fun onPacket(packet: JsonMessage, context: MessageContext) {
+            override fun onPacket(packet: JsonMessage, context: MessageContext, metadata: MessageMetadata, meterRegistry: MeterRegistry) {
                 appStates.up(packet["app_name"].asText(), packet["instance_id"].asText(), packet["@opprettet"].asLocalDateTime())
             }
 
-            override fun onError(problems: MessageProblems, context: MessageContext) {
+            override fun onError(problems: MessageProblems, context: MessageContext, metadata: MessageMetadata) {
                 logger.error("forstod ikke application_up:\n${problems.toExtendedReport()}")
             }
         })
@@ -92,7 +106,7 @@ fun main() {
             validate { it.require("ping_time", JsonNode::asLocalDateTime) }
             validate { it.require("pong_time", JsonNode::asLocalDateTime) }
         }.register(object : River.PacketListener {
-            override fun onPacket(packet: JsonMessage, context: MessageContext) {
+            override fun onPacket(packet: JsonMessage, context: MessageContext, metadata: MessageMetadata, meterRegistry: MeterRegistry) {
                 val app = packet["app_name"].asText()
                 val instance = packet["instance_id"].asText()
                 val pingTime = packet["ping_time"].asLocalDateTime()
@@ -102,7 +116,7 @@ fun main() {
                 appStates.ping(app, instance, pingTime, pongTime)
             }
 
-            override fun onError(problems: MessageProblems, context: MessageContext) {
+            override fun onError(problems: MessageProblems, context: MessageContext, metadata: MessageMetadata) {
                 logger.error("forstod ikke pong:\n${problems.toExtendedReport()}")
             }
         })
@@ -112,11 +126,11 @@ fun main() {
             validate { it.requireKey("app_name", "instance_id") }
             validate { it.require("@opprettet", JsonNode::asLocalDateTime) }
         }.register(object : River.PacketListener {
-            override fun onPacket(packet: JsonMessage, context: MessageContext) {
+            override fun onPacket(packet: JsonMessage, context: MessageContext, metadata: MessageMetadata, meterRegistry: MeterRegistry) {
                 appStates.down(packet["app_name"].asText(), packet["instance_id"].asText(), packet["@opprettet"].asLocalDateTime())
             }
 
-            override fun onError(problems: MessageProblems, context: MessageContext) {
+            override fun onError(problems: MessageProblems, context: MessageContext, metadata: MessageMetadata) {
                 logger.error("forstod ikke application_down:\n${problems.toExtendedReport()}")
             }
         })
@@ -126,11 +140,11 @@ fun main() {
             validate { it.requireKey("app_name", "instance_id") }
             validate { it.require("@opprettet", JsonNode::asLocalDateTime) }
         }.register(object : River.PacketListener {
-            override fun onPacket(packet: JsonMessage, context: MessageContext) {
+            override fun onPacket(packet: JsonMessage, context: MessageContext, metadata: MessageMetadata, meterRegistry: MeterRegistry) {
                 appStates.down(packet["app_name"].asText(), packet["instance_id"].asText(), packet["@opprettet"].asLocalDateTime())
             }
 
-            override fun onError(problems: MessageProblems, context: MessageContext) {
+            override fun onError(problems: MessageProblems, context: MessageContext, metadata: MessageMetadata) {
                 logger.error("forstod ikke application_stop:\n${problems.toExtendedReport()}")
             }
         })
@@ -138,14 +152,18 @@ fun main() {
 }
 
 private fun Boolean.toInt() = if (this) 1 else 0
-private suspend fun CoroutineScope.printerJob(rapidsConnection: RapidsConnection, appStates: AppStates) {
+private suspend fun CoroutineScope.printerJob(meterRegistry: MeterRegistry, rapidsConnection: RapidsConnection, appStates: AppStates) {
     while (isActive) {
         delay(Duration.ofSeconds(15))
         val threshold = LocalDateTime.now().minus(terskelForAntattNede)
         logger.info(appStates.reportString(threshold))
-        appStates.report(threshold).onEach { (app, state) ->
-            stateGauge.labels(app).set(state.toInt().toDouble())
-        }
+
+        MultiGauge.builder("app_status")
+            .description("Gjeldende status på apps")
+            .register(meterRegistry)
+            .register(appStates.report(threshold).map { (app, state) ->
+                Row.of(Tags.of("appnavn", app), state.toInt())
+            })
         appStates.instances(threshold).also { report ->
             rapidsConnection.publish(JsonMessage.newMessage("app_status", mapOf(
                 "threshold" to threshold,
