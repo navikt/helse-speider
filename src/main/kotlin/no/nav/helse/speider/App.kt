@@ -87,7 +87,7 @@ fun main() {
         })
 
         River(this).apply {
-            validate { it.demandValue("@event_name", "application_up") }
+            precondition { it.requireValue("@event_name", "application_up") }
             validate { it.requireKey("app_name", "instance_id") }
             validate { it.require("@opprettet", JsonNode::asLocalDateTime) }
         }.register(object : River.PacketListener {
@@ -101,7 +101,7 @@ fun main() {
         })
 
         River(this).apply {
-            validate { it.demandValue("@event_name", "pong") }
+            precondition { it.requireValue("@event_name", "pong") }
             validate { it.requireKey("app_name", "instance_id") }
             validate { it.require("ping_time", JsonNode::asLocalDateTime) }
             validate { it.require("pong_time", JsonNode::asLocalDateTime) }
@@ -122,7 +122,7 @@ fun main() {
         })
 
         River(this).apply {
-            validate { it.demandValue("@event_name", "application_down") }
+            precondition { it.requireValue("@event_name", "application_down") }
             validate { it.requireKey("app_name", "instance_id") }
             validate { it.require("@opprettet", JsonNode::asLocalDateTime) }
         }.register(object : River.PacketListener {
@@ -136,7 +136,7 @@ fun main() {
         })
 
         River(this).apply {
-            validate { it.demandValue("@event_name", "application_stop") }
+            precondition { it.requireValue("@event_name", "application_stop") }
             validate { it.requireKey("app_name", "instance_id") }
             validate { it.require("@opprettet", JsonNode::asLocalDateTime) }
         }.register(object : River.PacketListener {
