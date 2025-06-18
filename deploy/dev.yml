@@ -31,6 +31,11 @@ spec:
   webproxy: true
   secureLogs:
     enabled: true
+  accessPolicy:
+    outbound:
+      rules:
+        - application: logging
+          namespace: nais-system
   kafka:
     pool: nav-dev
   vault:
