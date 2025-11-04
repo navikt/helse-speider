@@ -1,8 +1,8 @@
 val junitJupiterVersion = "5.12.1"
-val rapidsAndRiversVersion = "2025092210081758528498.1d4b108f2c61"
+val rapidsAndRiversVersion = "2025110410191762247980.5e0592e08597"
 
 plugins {
-    kotlin("jvm") version "2.2.10"
+    kotlin("jvm") version "2.2.21"
 }
 
 repositories {
