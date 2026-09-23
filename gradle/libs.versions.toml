@@ -1,0 +1,8 @@
+[versions]
+sasGradlePlugins = "20260918.1635"
+
+[libraries]
+rapidsAndRivers = "com.github.navikt:rapids-and-rivers:2026011411051768385145.e8ebad1177b4"
+
+[plugins]
+sas-deployable = { id = "no.nav.helse.sas.sas-deployable", version.ref = "sasGradlePlugins" }
