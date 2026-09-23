@@ -2,7 +2,7 @@
 sasGradlePlugins = "20260918.1635"
 
 [libraries]
-rapidsAndRivers = "com.github.navikt:rapids-and-rivers:2026071513121784113927"
+rapidsAndRivers = "com.github.navikt:rapids-and-rivers:2026091610031789545782"
 
 [plugins]
 sas-deployable = { id = "no.nav.helse.sas.sas-deployable", version.ref = "sasGradlePlugins" }
