@@ -1,5 +1,5 @@
 [versions]
-sasGradlePlugins = "20260918.1635"
+sasGradlePlugins = "20260923.0907"
 
 [libraries]
 rapidsAndRivers = "com.github.navikt:rapids-and-rivers:2026091610031789545782"
