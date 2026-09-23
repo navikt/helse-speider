@@ -1,6 +1,5 @@
 package no.nav.helse.speider
 
-import com.fasterxml.jackson.databind.JsonNode
 import com.github.navikt.tbd_libs.rapids_and_rivers.JsonMessage
 import com.github.navikt.tbd_libs.rapids_and_rivers.River
 import com.github.navikt.tbd_libs.rapids_and_rivers.asLocalDateTime
@@ -16,9 +15,13 @@ import io.micrometer.core.instrument.Tags
 import io.micrometer.prometheusmetrics.PrometheusConfig
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry
 import io.prometheus.metrics.model.registry.PrometheusRegistry
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.time.delay
-import no.nav.helse.rapids_rivers.*
+import no.nav.helse.rapids_rivers.RapidApplication
 import org.apache.kafka.clients.CommonClientConfigs
 import org.apache.kafka.clients.admin.AdminClient
 import org.apache.kafka.clients.producer.KafkaProducer
@@ -28,6 +31,7 @@ import org.apache.kafka.common.config.SslConfigs
 import org.apache.kafka.common.security.auth.SecurityProtocol
 import org.apache.kafka.common.serialization.StringSerializer
 import org.slf4j.LoggerFactory
+import tools.jackson.databind.JsonNode
 import java.time.Duration
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit.SECONDS
@@ -106,7 +110,7 @@ fun main() {
                             metadata: MessageMetadata,
                             meterRegistry: MeterRegistry,
                         ) {
-                            appStates.up(packet["app_name"].asText(), packet["instance_id"].asText(), packet["@opprettet"].asLocalDateTime())
+                            appStates.up(packet["app_name"].asString(), packet["instance_id"].asString(), packet["@opprettet"].asLocalDateTime())
                         }
 
                         override fun onError(
@@ -133,8 +137,8 @@ fun main() {
                             metadata: MessageMetadata,
                             meterRegistry: MeterRegistry,
                         ) {
-                            val app = packet["app_name"].asText()
-                            val instance = packet["instance_id"].asText()
+                            val app = packet["app_name"].asString()
+                            val instance = packet["instance_id"].asString()
                             val pingTime = packet["ping_time"].asLocalDateTime()
                             val pongTime = packet["pong_time"].asLocalDateTime()
 
@@ -165,7 +169,7 @@ fun main() {
                             metadata: MessageMetadata,
                             meterRegistry: MeterRegistry,
                         ) {
-                            appStates.down(packet["app_name"].asText(), packet["instance_id"].asText(), packet["@opprettet"].asLocalDateTime())
+                            appStates.down(packet["app_name"].asString(), packet["instance_id"].asString(), packet["@opprettet"].asLocalDateTime())
                         }
 
                         override fun onError(
@@ -191,7 +195,7 @@ fun main() {
                             metadata: MessageMetadata,
                             meterRegistry: MeterRegistry,
                         ) {
-                            appStates.down(packet["app_name"].asText(), packet["instance_id"].asText(), packet["@opprettet"].asLocalDateTime())
+                            appStates.down(packet["app_name"].asString(), packet["instance_id"].asString(), packet["@opprettet"].asLocalDateTime())
                         }
 
                         override fun onError(
