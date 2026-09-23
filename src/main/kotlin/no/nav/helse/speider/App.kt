@@ -42,27 +42,30 @@ private val terskelForAntattNede = Duration.ofSeconds(60)
 fun main() {
     val env = System.getenv()
 
-    val props = Properties().apply {
-        put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, env.getValue("KAFKA_BROKERS"))
-        put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SSL.name)
-        put(SslConfigs.SSL_ENDPOINT_IDENTIFICATION_ALGORITHM_CONFIG, "")
-        put(SslConfigs.SSL_TRUSTSTORE_TYPE_CONFIG, "jks")
-        put(SslConfigs.SSL_KEYSTORE_TYPE_CONFIG, "PKCS12")
-        put(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG, env.getValue("KAFKA_TRUSTSTORE_PATH"))
-        put(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG,  env.getValue("KAFKA_CREDSTORE_PASSWORD"))
-        put(SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG, env.getValue("KAFKA_KEYSTORE_PATH"))
-        put(SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG, env.getValue("KAFKA_CREDSTORE_PASSWORD"))
-    }
+    val props =
+        Properties().apply {
+            put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, env.getValue("KAFKA_BROKERS"))
+            put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SSL.name)
+            put(SslConfigs.SSL_ENDPOINT_IDENTIFICATION_ALGORITHM_CONFIG, "")
+            put(SslConfigs.SSL_TRUSTSTORE_TYPE_CONFIG, "jks")
+            put(SslConfigs.SSL_KEYSTORE_TYPE_CONFIG, "PKCS12")
+            put(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG, env.getValue("KAFKA_TRUSTSTORE_PATH"))
+            put(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG, env.getValue("KAFKA_CREDSTORE_PASSWORD"))
+            put(SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG, env.getValue("KAFKA_KEYSTORE_PATH"))
+            put(SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG, env.getValue("KAFKA_CREDSTORE_PASSWORD"))
+        }
     val adminClient = AdminClient.create(props)
     val pingProducer = KafkaProducer(props, StringSerializer(), StringSerializer())
 
     val topic = env.getValue("KAFKA_RAPID_TOPIC")
-    val partitionsCount = adminClient.describeTopics(listOf(topic))
-        .allTopicNames()
-        .get()
-        .getValue(topic)
-        .partitions()
-        .size
+    val partitionsCount =
+        adminClient
+            .describeTopics(listOf(topic))
+            .allTopicNames()
+            .get()
+            .getValue(topic)
+            .partitions()
+            .size
 
     logger.info("$topic consist of $partitionsCount partitions")
 
@@ -71,122 +74,194 @@ fun main() {
     var statusPrinterJob: Job? = null
 
     val meterRegistry = PrometheusMeterRegistry(PrometheusConfig.DEFAULT, PrometheusRegistry.defaultRegistry, Clock.SYSTEM)
-    RapidApplication.create(env, meterRegistry = meterRegistry).apply {
-        register(object : RapidsConnection.StatusListener {
-            override fun onStartup(rapidsConnection: RapidsConnection) {
-                CoroutineScope(Dispatchers.IO).apply {
-                    statusPrinterJob = launch { printerJob(meterRegistry, rapidsConnection, appStates) }
-                    scheduledPingJob = launch { pinger(pingProducer, topic, partitionsCount) }
-                }
-            }
+    RapidApplication
+        .create(env, meterRegistry = meterRegistry)
+        .apply {
+            register(
+                object : RapidsConnection.StatusListener {
+                    override fun onStartup(rapidsConnection: RapidsConnection) {
+                        CoroutineScope(Dispatchers.IO).apply {
+                            statusPrinterJob = launch { printerJob(meterRegistry, rapidsConnection, appStates) }
+                            scheduledPingJob = launch { pinger(pingProducer, topic, partitionsCount) }
+                        }
+                    }
 
-            override fun onShutdown(rapidsConnection: RapidsConnection) {
-                scheduledPingJob?.cancel()
-                statusPrinterJob?.cancel()
-            }
-        })
+                    override fun onShutdown(rapidsConnection: RapidsConnection) {
+                        scheduledPingJob?.cancel()
+                        statusPrinterJob?.cancel()
+                    }
+                },
+            )
 
-        River(this).apply {
-            precondition { it.requireValue("@event_name", "application_up") }
-            validate { it.requireKey("app_name", "instance_id") }
-            validate { it.require("@opprettet", JsonNode::asLocalDateTime) }
-        }.register(object : River.PacketListener {
-            override fun onPacket(packet: JsonMessage, context: MessageContext, metadata: MessageMetadata, meterRegistry: MeterRegistry) {
-                appStates.up(packet["app_name"].asText(), packet["instance_id"].asText(), packet["@opprettet"].asLocalDateTime())
-            }
+            River(this)
+                .apply {
+                    precondition { it.requireValue("@event_name", "application_up") }
+                    validate { it.requireKey("app_name", "instance_id") }
+                    validate { it.require("@opprettet", JsonNode::asLocalDateTime) }
+                }.register(
+                    object : River.PacketListener {
+                        override fun onPacket(
+                            packet: JsonMessage,
+                            context: MessageContext,
+                            metadata: MessageMetadata,
+                            meterRegistry: MeterRegistry,
+                        ) {
+                            appStates.up(packet["app_name"].asText(), packet["instance_id"].asText(), packet["@opprettet"].asLocalDateTime())
+                        }
 
-            override fun onError(problems: MessageProblems, context: MessageContext, metadata: MessageMetadata) {
-                logger.error("forstod ikke application_up:\n${problems.toExtendedReport()}")
-            }
-        })
+                        override fun onError(
+                            problems: MessageProblems,
+                            context: MessageContext,
+                            metadata: MessageMetadata,
+                        ) {
+                            logger.error("forstod ikke application_up:\n${problems.toExtendedReport()}")
+                        }
+                    },
+                )
 
-        River(this).apply {
-            precondition { it.requireValue("@event_name", "pong") }
-            validate { it.requireKey("app_name", "instance_id") }
-            validate { it.require("ping_time", JsonNode::asLocalDateTime) }
-            validate { it.require("pong_time", JsonNode::asLocalDateTime) }
-        }.register(object : River.PacketListener {
-            override fun onPacket(packet: JsonMessage, context: MessageContext, metadata: MessageMetadata, meterRegistry: MeterRegistry) {
-                val app = packet["app_name"].asText()
-                val instance = packet["instance_id"].asText()
-                val pingTime = packet["ping_time"].asLocalDateTime()
-                val pongTime = packet["pong_time"].asLocalDateTime()
+            River(this)
+                .apply {
+                    precondition { it.requireValue("@event_name", "pong") }
+                    validate { it.requireKey("app_name", "instance_id") }
+                    validate { it.require("ping_time", JsonNode::asLocalDateTime) }
+                    validate { it.require("pong_time", JsonNode::asLocalDateTime) }
+                }.register(
+                    object : River.PacketListener {
+                        override fun onPacket(
+                            packet: JsonMessage,
+                            context: MessageContext,
+                            metadata: MessageMetadata,
+                            meterRegistry: MeterRegistry,
+                        ) {
+                            val app = packet["app_name"].asText()
+                            val instance = packet["instance_id"].asText()
+                            val pingTime = packet["ping_time"].asLocalDateTime()
+                            val pongTime = packet["pong_time"].asLocalDateTime()
 
-                logger.info("{}-{} svarte på ping etter {} sekunder (mottatt etter {} sekunder)", app, instance, SECONDS.between(pingTime, pongTime), SECONDS.between(pongTime, LocalDateTime.now()))
-                appStates.ping(app, instance, pingTime, pongTime)
-            }
+                            logger.info("{}-{} svarte på ping etter {} sekunder (mottatt etter {} sekunder)", app, instance, SECONDS.between(pingTime, pongTime), SECONDS.between(pongTime, LocalDateTime.now()))
+                            appStates.ping(app, instance, pingTime, pongTime)
+                        }
 
-            override fun onError(problems: MessageProblems, context: MessageContext, metadata: MessageMetadata) {
-                logger.error("forstod ikke pong:\n${problems.toExtendedReport()}")
-            }
-        })
+                        override fun onError(
+                            problems: MessageProblems,
+                            context: MessageContext,
+                            metadata: MessageMetadata,
+                        ) {
+                            logger.error("forstod ikke pong:\n${problems.toExtendedReport()}")
+                        }
+                    },
+                )
 
-        River(this).apply {
-            precondition { it.requireValue("@event_name", "application_down") }
-            validate { it.requireKey("app_name", "instance_id") }
-            validate { it.require("@opprettet", JsonNode::asLocalDateTime) }
-        }.register(object : River.PacketListener {
-            override fun onPacket(packet: JsonMessage, context: MessageContext, metadata: MessageMetadata, meterRegistry: MeterRegistry) {
-                appStates.down(packet["app_name"].asText(), packet["instance_id"].asText(), packet["@opprettet"].asLocalDateTime())
-            }
+            River(this)
+                .apply {
+                    precondition { it.requireValue("@event_name", "application_down") }
+                    validate { it.requireKey("app_name", "instance_id") }
+                    validate { it.require("@opprettet", JsonNode::asLocalDateTime) }
+                }.register(
+                    object : River.PacketListener {
+                        override fun onPacket(
+                            packet: JsonMessage,
+                            context: MessageContext,
+                            metadata: MessageMetadata,
+                            meterRegistry: MeterRegistry,
+                        ) {
+                            appStates.down(packet["app_name"].asText(), packet["instance_id"].asText(), packet["@opprettet"].asLocalDateTime())
+                        }
 
-            override fun onError(problems: MessageProblems, context: MessageContext, metadata: MessageMetadata) {
-                logger.error("forstod ikke application_down:\n${problems.toExtendedReport()}")
-            }
-        })
+                        override fun onError(
+                            problems: MessageProblems,
+                            context: MessageContext,
+                            metadata: MessageMetadata,
+                        ) {
+                            logger.error("forstod ikke application_down:\n${problems.toExtendedReport()}")
+                        }
+                    },
+                )
 
-        River(this).apply {
-            precondition { it.requireValue("@event_name", "application_stop") }
-            validate { it.requireKey("app_name", "instance_id") }
-            validate { it.require("@opprettet", JsonNode::asLocalDateTime) }
-        }.register(object : River.PacketListener {
-            override fun onPacket(packet: JsonMessage, context: MessageContext, metadata: MessageMetadata, meterRegistry: MeterRegistry) {
-                appStates.down(packet["app_name"].asText(), packet["instance_id"].asText(), packet["@opprettet"].asLocalDateTime())
-            }
+            River(this)
+                .apply {
+                    precondition { it.requireValue("@event_name", "application_stop") }
+                    validate { it.requireKey("app_name", "instance_id") }
+                    validate { it.require("@opprettet", JsonNode::asLocalDateTime) }
+                }.register(
+                    object : River.PacketListener {
+                        override fun onPacket(
+                            packet: JsonMessage,
+                            context: MessageContext,
+                            metadata: MessageMetadata,
+                            meterRegistry: MeterRegistry,
+                        ) {
+                            appStates.down(packet["app_name"].asText(), packet["instance_id"].asText(), packet["@opprettet"].asLocalDateTime())
+                        }
 
-            override fun onError(problems: MessageProblems, context: MessageContext, metadata: MessageMetadata) {
-                logger.error("forstod ikke application_stop:\n${problems.toExtendedReport()}")
-            }
-        })
-    }.start()
+                        override fun onError(
+                            problems: MessageProblems,
+                            context: MessageContext,
+                            metadata: MessageMetadata,
+                        ) {
+                            logger.error("forstod ikke application_stop:\n${problems.toExtendedReport()}")
+                        }
+                    },
+                )
+        }.start()
 }
 
 private fun Boolean.toInt() = if (this) 1 else 0
-private suspend fun CoroutineScope.printerJob(meterRegistry: MeterRegistry, rapidsConnection: RapidsConnection, appStates: AppStates) {
+
+private suspend fun CoroutineScope.printerJob(
+    meterRegistry: MeterRegistry,
+    rapidsConnection: RapidsConnection,
+    appStates: AppStates,
+) {
     while (isActive) {
         delay(Duration.ofSeconds(15))
         val threshold = LocalDateTime.now().minus(terskelForAntattNede)
         logger.info(appStates.reportString(threshold))
 
-        MultiGauge.builder("app_status")
+        MultiGauge
+            .builder("app_status")
             .description("Gjeldende status på apps")
             .register(meterRegistry)
-            .register(appStates.report(threshold).map { (app, state) ->
-                Row.of(Tags.of("appnavn", app), state.toInt())
-            })
+            .register(
+                appStates.report(threshold).map { (app, state) ->
+                    Row.of(Tags.of("appnavn", app), state.toInt())
+                },
+            )
         appStates.instances(threshold).also { report ->
-            rapidsConnection.publish(JsonMessage.newMessage("app_status", mapOf(
-                "threshold" to threshold,
-                "states" to report.map { (appName, info) ->
-                    mapOf<String, Any>(
-                        "app" to appName,
-                        "state" to info.first.toInt(),
-                        "last_active_time" to info.second,
-                        "instances" to info.third.map { (instanceId, lastActive, isUp) ->
-                            mapOf(
-                                "instance" to instanceId,
-                                "last_active_time" to lastActive,
-                                "state" to isUp.toInt()
-                            )
-                        }
-                    )
-                }
-            )).toJson())
+            rapidsConnection.publish(
+                JsonMessage
+                    .newMessage(
+                        "app_status",
+                        mapOf(
+                            "threshold" to threshold,
+                            "states" to
+                                report.map { (appName, info) ->
+                                    mapOf<String, Any>(
+                                        "app" to appName,
+                                        "state" to info.first.toInt(),
+                                        "last_active_time" to info.second,
+                                        "instances" to
+                                            info.third.map { (instanceId, lastActive, isUp) ->
+                                                mapOf(
+                                                    "instance" to instanceId,
+                                                    "last_active_time" to lastActive,
+                                                    "state" to isUp.toInt(),
+                                                )
+                                            },
+                                    )
+                                },
+                        ),
+                    ).toJson(),
+            )
         }
     }
 }
 
-private suspend fun CoroutineScope.pinger(producer: Producer<String, String>, topic: String, partitionCount: Int) {
+private suspend fun CoroutineScope.pinger(
+    producer: Producer<String, String>,
+    topic: String,
+    partitionCount: Int,
+) {
     while (isActive) {
         delay(Duration.ofSeconds(30))
         val packet = JsonMessage.newMessage("ping")

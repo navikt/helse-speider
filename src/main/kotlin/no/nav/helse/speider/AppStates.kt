@@ -15,81 +15,115 @@ internal class AppStates {
     private val lock = ReentrantReadWriteLock()
     private val states = mutableListOf<App>()
 
-    fun up(app: String, instance: String, time: LocalDateTime) {
+    fun up(
+        app: String,
+        instance: String,
+        time: LocalDateTime,
+    ) {
         lock.write {
             App.up(states, app, instance, time)
         }
     }
 
-    fun ping(app: String, instance: String, pingTime: LocalDateTime, pongTime: LocalDateTime) {
+    fun ping(
+        app: String,
+        instance: String,
+        pingTime: LocalDateTime,
+        pongTime: LocalDateTime,
+    ) {
         lock.write {
             App.ping(states, app, instance, pingTime, pongTime)
         }
     }
 
-    fun down(app: String, instance: String, time: LocalDateTime) {
+    fun down(
+        app: String,
+        instance: String,
+        time: LocalDateTime,
+    ) {
         lock.write {
             App.down(states, app, instance, time)
         }
     }
 
-    fun report(threshold: LocalDateTime): Map<String, Boolean> {
-        return lock.read {
+    fun report(threshold: LocalDateTime): Map<String, Boolean> =
+        lock.read {
             instances(threshold).mapValues { it.value.first }
         }
-    }
 
-    fun instances(threshold: LocalDateTime) = lock.read {
-        App.instances(states.filterNot { it.isIgnored }, threshold)
-    }
+    fun instances(threshold: LocalDateTime) =
+        lock.read {
+            App.instances(states.filterNot { it.isIgnored }, threshold)
+        }
 
-    fun reportString(threshold: LocalDateTime): String {
-        return lock.read {
+    fun reportString(threshold: LocalDateTime): String =
+        lock.read {
             App.reportString(states, threshold)
         }
-    }
 
     private class App(
         private val name: String,
         private val instances: MutableList<Instance> = mutableListOf(),
-        private var time: LocalDateTime
+        private var time: LocalDateTime,
     ) {
         val isIgnored = name in ignoredApps
 
         private val downInstances: MutableList<Pair<String, LocalDateTime>> = mutableListOf()
 
         companion object {
-            fun up(states: MutableList<App>, appName: String, instance: String, time: LocalDateTime) {
+            fun up(
+                states: MutableList<App>,
+                appName: String,
+                instance: String,
+                time: LocalDateTime,
+            ) {
                 val app = findOrCreateApp(states, appName, time)
                 // re-active a downed app if we've received the application_up event
                 app.downInstances.removeAll { it.first == instance }
                 Instance.up(app.instances, instance, time)
             }
 
-            fun ping(states: MutableList<App>, appName: String, instance: String, pingTime: LocalDateTime, pongTime: LocalDateTime) {
+            fun ping(
+                states: MutableList<App>,
+                appName: String,
+                instance: String,
+                pingTime: LocalDateTime,
+                pongTime: LocalDateTime,
+            ) {
                 val app = findOrCreateApp(states, appName, pongTime)
                 if (app.downInstances.any { it.first == instance }) return // don't re-active a downed app
                 app.downInstances.removeAll { it.second < LocalDateTime.now().minusHours(6) }
                 Instance.up(app.instances, instance, pongTime, pingTime = pingTime)
             }
 
-            fun down(states: MutableList<App>, appName: String, instance: String, time: LocalDateTime) {
+            fun down(
+                states: MutableList<App>,
+                appName: String,
+                instance: String,
+                time: LocalDateTime,
+            ) {
                 val app = findOrCreateApp(states, appName, time)
                 if (!Instance.down(app.instances, instance, time)) return
                 app.downInstances.add(instance to LocalDateTime.now())
             }
 
-            fun instances(states: List<App>, threshold: LocalDateTime): Map<String, Triple<Boolean, LocalDateTime, List<Triple<String, LocalDateTime, Boolean>>>> {
-                return states.associate { app ->
+            fun instances(
+                states: List<App>,
+                threshold: LocalDateTime,
+            ): Map<String, Triple<Boolean, LocalDateTime, List<Triple<String, LocalDateTime, Boolean>>>> =
+                states.associate { app ->
                     app.name to Triple(Instance.up(app.instances, threshold), app.time, Instance.list(app.instances, threshold))
                 }
-            }
 
-            fun reportString(states: List<App>, threshold: LocalDateTime): String {
+            fun reportString(
+                states: List<App>,
+                threshold: LocalDateTime,
+            ): String {
                 val sb = StringBuffer()
                 sb.append("Application states since ${threshold.format(timestampFormat)}:\n")
                 states.forEach { app ->
-                    sb.append("\t")
+                    sb
+                        .append("\t")
                         .append(app.name)
                         .append(": ")
                         .appendLine(if (Instance.up(app.instances, threshold)) "UP" else "DOWN")
@@ -98,19 +132,24 @@ internal class AppStates {
                 return sb.toString()
             }
 
-            private fun findOrCreateApp(states: MutableList<App>, app: String, lastActivity: LocalDateTime): App {
-                return states.findExistingAndUpdateActiveTime(app, lastActivity) ?: states.registerNewApp(app, lastActivity)
-            }
+            private fun findOrCreateApp(
+                states: MutableList<App>,
+                app: String,
+                lastActivity: LocalDateTime,
+            ): App = states.findExistingAndUpdateActiveTime(app, lastActivity) ?: states.registerNewApp(app, lastActivity)
 
-            private fun List<App>.findExistingAndUpdateActiveTime(app: String, time: LocalDateTime): App? {
-                return firstOrNull { it.name == app }?.also {
+            private fun List<App>.findExistingAndUpdateActiveTime(
+                app: String,
+                time: LocalDateTime,
+            ): App? =
+                firstOrNull { it.name == app }?.also {
                     it.time = maxOf(it.time, time)
                 }
-            }
 
-            private fun MutableList<App>.registerNewApp(app: String, time: LocalDateTime): App {
-                return App(app, mutableListOf(), time).also { add(it) }
-            }
+            private fun MutableList<App>.registerNewApp(
+                app: String,
+                time: LocalDateTime,
+            ): App = App(app, mutableListOf(), time).also { add(it) }
         }
     }
 
@@ -121,47 +160,75 @@ internal class AppStates {
         // last time the app responded with an 'up' event or a 'pong'
         private var lastActivity: LocalDateTime,
         // last time speider registered the information
-        private var lastUpdated: LocalDateTime
+        private var lastUpdated: LocalDateTime,
     ) {
         private val latency get() = Duration.between(lastPingTime, lastActivity)
+
         override fun toString(): String {
             val now = LocalDateTime.now()
             return "$id: last active ${Duration.between(lastActivity, now).toSeconds()} seconds ago (at ${lastActivity.format(timestampFormat)}) " +
-                    "with ${latency.toSeconds()} seconds latency " +
-                    "(as of ${Duration.between(lastUpdated, now).toSeconds()} seconds ago, on ${lastUpdated.format(timestampFormat)})"
+                "with ${latency.toSeconds()} seconds latency " +
+                "(as of ${Duration.between(lastUpdated, now).toSeconds()} seconds ago, on ${lastUpdated.format(timestampFormat)})"
         }
 
         fun up(threshold: LocalDateTime) = lastActivity >= threshold
 
-        private fun updateLastActiveTime(pingTime: LocalDateTime?, newTime: LocalDateTime) {
+        private fun updateLastActiveTime(
+            pingTime: LocalDateTime?,
+            newTime: LocalDateTime,
+        ) {
             if (pingTime != null) this.lastPingTime = maxOf(lastPingTime, pingTime)
             this.lastActivity = maxOf(lastActivity, newTime)
             this.lastUpdated = LocalDateTime.now()
         }
 
-        private fun isInstanceDown(instance: String, downTime: LocalDateTime): Boolean {
+        private fun isInstanceDown(
+            instance: String,
+            downTime: LocalDateTime,
+        ): Boolean {
             if (this.id != instance) return false
             if (downTime < this.lastActivity) return false
             return true
         }
 
         companion object {
-            fun list(list: List<Instance>, threshold: LocalDateTime) = list.map { Triple(it.id, it.lastActivity, it.up(threshold)) }
-            fun up(list: MutableList<Instance>, instance: String, lastActivity: LocalDateTime, pingTime: LocalDateTime? = null) {
-                 if (!list.updateLastActiveTime(instance, pingTime, lastActivity)) list.registerNewInstance(instance, lastActivity)
+            fun list(
+                list: List<Instance>,
+                threshold: LocalDateTime,
+            ) = list.map { Triple(it.id, it.lastActivity, it.up(threshold)) }
+
+            fun up(
+                list: MutableList<Instance>,
+                instance: String,
+                lastActivity: LocalDateTime,
+                pingTime: LocalDateTime? = null,
+            ) {
+                if (!list.updateLastActiveTime(instance, pingTime, lastActivity)) list.registerNewInstance(instance, lastActivity)
             }
 
-            fun down(list: MutableList<Instance>, instance: String, time: LocalDateTime) =
-                list.removeIf { it.isInstanceDown(instance, time) }
+            fun down(
+                list: MutableList<Instance>,
+                instance: String,
+                time: LocalDateTime,
+            ) = list.removeIf { it.isInstanceDown(instance, time) }
 
-            fun up(list: MutableList<Instance>, threshold: LocalDateTime) =
-                list.any { it.up(threshold) }
+            fun up(
+                list: MutableList<Instance>,
+                threshold: LocalDateTime,
+            ) = list.any { it.up(threshold) }
 
-            private fun MutableList<Instance>.registerNewInstance(instance: String, time: LocalDateTime) {
+            private fun MutableList<Instance>.registerNewInstance(
+                instance: String,
+                time: LocalDateTime,
+            ) {
                 add(Instance(instance, time, time, LocalDateTime.now()))
             }
 
-            private fun List<Instance>.updateLastActiveTime(instance: String, pingTime: LocalDateTime?, lastActivity: LocalDateTime): Boolean {
+            private fun List<Instance>.updateLastActiveTime(
+                instance: String,
+                pingTime: LocalDateTime?,
+                lastActivity: LocalDateTime,
+            ): Boolean {
                 val it = firstOrNull { it.id == instance } ?: return false
                 it.updateLastActiveTime(pingTime, lastActivity)
                 return true
