@@ -1,8 +1,8 @@
 [versions]
-sasGradlePlugins = "20260930.1152"
+sykepengerGradlePlugins = "20261001.1830"
 
 [libraries]
 rapidsAndRivers = "com.github.navikt:rapids-and-rivers:2026091610031789545782"
 
 [plugins]
-sas-deployable = { id = "no.nav.helse.sas.sas-deployable", version.ref = "sasGradlePlugins" }
+sykepenger-deployable = { id = "no.nav.sykepenger.deployable", version.ref = "sykepengerGradlePlugins" }

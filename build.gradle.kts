@@ -1,8 +1,8 @@
 plugins {
-    alias(libs.plugins.sas.deployable)
+    alias(libs.plugins.sykepenger.deployable)
 }
 
-sasDeployable {
+sykepengerDeployable {
     mainClass = "no.nav.helse.speider.AppKt"
 }
 
