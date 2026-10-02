@@ -1,0 +1,10 @@
+spec:
+  resources:
+    requests:
+      cpu: 50m
+  kafka:
+    pool: nav-prod
+  vault:
+    paths:
+      - mountPath: /var/run/secrets/nais.io/service_user
+        kvPath: /serviceuser/data/prod/srvspeider

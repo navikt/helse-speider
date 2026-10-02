@@ -1,0 +1,6 @@
+spec:
+  resources:
+    requests:
+      cpu: 5m
+  kafka:
+    pool: nav-dev

@@ -17,7 +17,6 @@ spec:
     limits:
       memory: 512Mi
     requests:
-      cpu: 50m
       memory: 128Mi
   replicas:
     min: 1
@@ -32,13 +31,8 @@ spec:
       rules:
         - application: logging
           namespace: nais-system
-  kafka:
-    pool: nav-prod
   vault:
     enabled: true
-    paths:
-      - mountPath: /var/run/secrets/nais.io/service_user
-        kvPath: /serviceuser/data/prod/srvspeider
   env:
     - name: KAFKA_CONSUMER_GROUP_ID
       value: tbd-speider-v1
