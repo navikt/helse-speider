@@ -1,5 +1,5 @@
 [versions]
-sykepengerGradlePlugins = "20261013.1718"
+sykepengerGradlePlugins = "20261026.1611"
 
 [libraries]
 rapidsAndRivers = "com.github.navikt:rapids-and-rivers:2026091610031789545782"
