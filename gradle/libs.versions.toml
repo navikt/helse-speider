@@ -2,7 +2,7 @@
 sykepengerGradlePlugins = "20261029.1945"
 
 [libraries]
-rapidsAndRivers = "com.github.navikt:rapids-and-rivers:2026091610031789545782"
+rapidsAndRivers = "com.github.navikt:rapids-and-rivers:2026110308421793691732"
 
 [plugins]
 sykepenger-deployable = { id = "no.nav.sykepenger.deployable", version.ref = "sykepengerGradlePlugins" }
